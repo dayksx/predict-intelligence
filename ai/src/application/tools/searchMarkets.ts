@@ -1,14 +1,15 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { searchGraphiti } from "../adapters/graphiti.js";
+import { GraphitiAdapter } from "../../adapters/outbound/GraphitiAdapter.js";
 
-/** LangChain tool that exposes the Graphiti knowledge graph to the agent.
- *  The agent calls this to fetch real market facts before reasoning. */
+const graphiti = new GraphitiAdapter();
+
+/** LangChain tool that bridges the agent core to the Graphiti outbound adapter. */
 export const searchMarketsTool = tool(
   async ({ query }) => {
     let facts;
     try {
-      facts = await searchGraphiti(query, 8);
+      facts = await graphiti.search(query, 8);
     } catch (err) {
       const msg = `Error fetching market data: ${err}`;
       console.error(`[tool error] ${msg}`);
