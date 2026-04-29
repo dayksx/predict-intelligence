@@ -1,4 +1,4 @@
-/** Normalised market record passed between modules and stored in Neo4j. */
+/** Normalised market record passed between modules and sent to Graphiti. */
 export interface MarketEvent {
   market_id: string;
   domain: string;
