@@ -2,7 +2,7 @@ import "dotenv/config";
 import { config } from "./config.js";
 import { fetchPolymarketMarkets } from "./sources/predictionMarkets.js";
 import { fetchNewsRss } from "./sources/newsRss.js";
-import { init, ingestMarkets, closeDriver } from "./graphiti/client.js";
+import { init, ingestMarkets } from "./graphiti/client.js";
 
 async function tick(): Promise<void> {
   const start = Date.now();
@@ -15,7 +15,7 @@ async function tick(): Promise<void> {
     acc[m.domain] = (acc[m.domain] ?? 0) + 1;
     return acc;
   }, {});
-  console.log(`[Neo4j] upserted ${markets.length} markets`, byDomain);
+  console.log(`[Polymarket] queued ${markets.length} episodes for Graphiti processing`, byDomain);
 
   const articles = await fetchNewsRss();
   console.log(`[RSS] ${articles.length} articles fetched`);
@@ -38,8 +38,7 @@ async function main(): Promise<void> {
   }, config.intervalHours * 60 * 60 * 1000);
 }
 
-main().catch(async (err) => {
+main().catch((err) => {
   console.error("fatal:", err);
-  await closeDriver();
   process.exit(1);
 });
