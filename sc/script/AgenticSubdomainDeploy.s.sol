@@ -10,9 +10,9 @@ address constant NAME_WRAPPER_SEPOLIA =
 address constant PUBLIC_RESOLVER_SEPOLIA =
     0xE99638b40E4Fff0129D56f03b55b6bbC4BBE49b5;
 
-contract AgenticSubdomainScript is Script {
+/// @dev Step 1: deploy. Then run `AgenticSubdomainApprove` as the owner of wrapped `agentic.eth`.
+contract AgenticSubdomainDeploy is Script {
     AgenticSubdomain public agenticSubdomain;
-
     /// @notice EIP-137 `namehash` for `agentic.eth` (labels hashed right-to-left: `eth`, then `agentic`).
     function namehashAgenticEth() private pure returns (bytes32) {
         bytes32 node = bytes32(0);
@@ -25,14 +25,11 @@ contract AgenticSubdomainScript is Script {
 
     function run() public {
         vm.startBroadcast();
-
         agenticSubdomain = new AgenticSubdomain(
             NAME_WRAPPER_SEPOLIA,
             namehashAgenticEth(),
             PUBLIC_RESOLVER_SEPOLIA
         );
-        agenticSubdomain.setSubdomain("agent1", msg.sender, type(uint64).max);
-
         vm.stopBroadcast();
     }
 }

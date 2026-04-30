@@ -2,10 +2,11 @@
 pragma solidity ^0.8.13;
 
 // Minimal ABI for ENS NameWrapper.setSubnodeRecord (wrapped names).
+// Second arg must be the plain label string; the wrapper hashes it internally (not bytes32 labelhash).
 interface INameWrapper {
     function setSubnodeRecord(
         bytes32 parentNode,
-        bytes32 label,
+        string calldata label,
         address owner,
         address resolver,
         uint64 ttl,
@@ -33,11 +34,9 @@ contract AgenticSubdomain {
 
     // label = UTF-8 segment without dots; agentAddress = wrapped owner; _expiry = NameWrapper expiry.
     function setSubdomain(string calldata label, address agentAddress, uint64 _expiry) public {
-        bytes32 labelHash = keccak256(bytes(label));
-
         nameWrapper.setSubnodeRecord(
             parentNode,
-            labelHash,
+            label,
             agentAddress,
             publicResolver,
             0, // TTL default via ENS/resolver

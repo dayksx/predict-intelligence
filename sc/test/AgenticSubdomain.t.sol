@@ -4,11 +4,11 @@ pragma solidity ^0.8.13;
 import {Test} from "forge-std/Test.sol";
 import {AgenticSubdomain} from "../src/AgenticSubdomain.sol";
 
-/// @dev Minimal stub so `setSubnodeRecord` succeeds without a forked NameWrapper.
+/// @dev Stub aligné sur `INameWrapper.setSubnodeRecord` (2ᵉ arg = `string label`, pas le labelhash).
 contract MockNameWrapper {
     function setSubnodeRecord(
         bytes32,
-        bytes32,
+        string calldata,
         address,
         address,
         uint64,
@@ -30,7 +30,9 @@ contract AgenticSubdomainTest is Test {
         );
     }
 
+    /// @dev Sur la vraie chaîne, l’expiry doit être ≤ celle du parent ; le mock ne l’applique pas.
     function test_SetSubdomain() public {
-        agenticSubdomain.setSubdomain("agenticpunk", address(0xBEEF), type(uint64).max);
+        uint64 expiry = uint64(block.timestamp + 365 days);
+        agenticSubdomain.setSubdomain("agenticpunk", address(0xBEEF), expiry);
     }
 }
