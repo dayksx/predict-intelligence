@@ -4,7 +4,7 @@ pragma solidity ^0.8.13;
 import {Test} from "forge-std/Test.sol";
 import {AgenticSubdomain} from "../src/AgenticSubdomain.sol";
 
-/// @dev Stub aligné sur `INameWrapper.setSubnodeRecord` (2ᵉ arg = `string label`, pas le labelhash).
+/// @dev Stub matching `INameWrapper.setSubnodeRecord` (2nd arg = `string label`, not labelhash).
 contract MockNameWrapper {
     function setSubnodeRecord(
         bytes32,
@@ -30,7 +30,7 @@ contract AgenticSubdomainTest is Test {
         );
     }
 
-    /// @dev Sur la vraie chaîne, l’expiry doit être ≤ celle du parent ; le mock ne l’applique pas.
+    /// @dev On-chain, expiry must be ≤ parent; the mock does not enforce it.
     function test_SetSubdomain() public {
         uint64 expiry = uint64(block.timestamp + 365 days);
         agenticSubdomain.setSubdomain("agenticpunk", address(0xBEEF), expiry);

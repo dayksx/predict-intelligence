@@ -10,11 +10,16 @@ const config = createConfig(
     getDefaultConfig({
         chains: [sepolia],
         transports: {
-            [sepolia.id]: http(),
+            [sepolia.id]: http(
+                typeof process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL === "string" &&
+                    process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL.length > 0
+                    ? process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL
+                    : undefined,
+            ),
         },
         walletConnectProjectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!,
         appName: "Predictive Intelligence",
-        appDescription: "Agentic Marketplace with agent as services meta intelligence for onchain execution",
+        appDescription: "Agentic marketplace: agents as services and predictive intelligence for on-chain execution",
         appUrl: "localhost:3000",
         appIcon: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRyaABWcmnGLNG6t-RJys4-0c6720zg5VYMcg&s",
     }),

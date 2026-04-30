@@ -13,19 +13,19 @@ interface INameWrapperView {
 }
 
 /// @dev After deploy + owner `setApprovalForAll` on NameWrapper, registers three subnames:
-///      `dayan.agentic.eth`, `nicolas.agentic.eth`, `gabriel.agentic.eth`.
-///      Subname owner: set `SUBNAME_OWNER_ADDRESS=0x...` (recommandé sur un fork : le compte EOA
-///      « propre », pas la clé Anvil #0 — voir README). Sinon = `msg.sender` (clé `--private-key`).
-///      Expiry = parent (lu sur le NameWrapper).
-///      En broadcast sur un RPC (ex. Alchemy), utiliser `forge script ... --slow --broadcast` pour
-///      séquencer les 3 txs (évite *in-flight transaction limit*).
+///      `agent0.agentic.eth`, `agent1.agentic.eth`, `agent2.agentic.eth` (edit labels in this file if needed).
+///      Subname owner: set `SUBNAME_OWNER_ADDRESS=0x...` (recommended on a fork: a clean EOA,
+///      not Anvil key #0 — see README). Otherwise `msg.sender` (`--private-key`).
+///      Expiry = parent (read from NameWrapper).
+///      When broadcasting via RPC (e.g. Alchemy), use `forge script ... --slow --broadcast` to
+///      sequence the 3 txs (avoids *in-flight transaction limit*).
 contract AgenticSubdomainRegisterThree is Script {
     /// @dev `REGISTRAR_CONTRACT_ADDRESS=0x... forge script ...`
     function run() public {
         registerThree(vm.envAddress("REGISTRAR_CONTRACT_ADDRESS"));
     }
 
-    /// @dev `forge script ... --sig "runWithAddress(address)" 0x...` (un seul `run` dans l’ABI pour Foundry).
+    /// @dev `forge script ... --sig "runWithAddress(address)" 0x...` (only one `run` in the ABI for Foundry).
     function runWithAddress(address registrar) public {
         registerThree(registrar);
     }

@@ -19,7 +19,7 @@ contract AgenticSubdomainApprove is Script {
         approve(vm.envAddress("REGISTRAR_CONTRACT_ADDRESS"));
     }
 
-    /// @dev `forge script ... --sig "runWithAddress(address)" 0x...` (évite un second `run` : Foundry n’accepte qu’une seule `run` dans l’ABI).
+    /// @dev `forge script ... --sig "runWithAddress(address)" 0x...` (avoids a second `run`: Foundry allows only one `run` in the ABI).
     function runWithAddress(address registrar) public {
         approve(registrar);
     }
