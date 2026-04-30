@@ -13,6 +13,12 @@ import {
 } from "wagmi";
 import { sepolia } from "wagmi/chains";
 import {
+  AGENTIC_ENS_TEXT_KEYS,
+  buildAgenticRegistrationTextRecords,
+  encodeSetTextMulticallPayload,
+  ENS_PUBLIC_RESOLVER_ABI,
+} from "@/lib/ens-registration-metadata";
+import {
   MARKETPLACE_AGENTS,
   agenticSubdomainAbi,
   getRegistrarAddress,
@@ -40,6 +46,19 @@ function readExpiryFromGetData(data: unknown): bigint | undefined {
 function shortenAddress(addr: string, head = 6, tail = 4): string {
   if (addr.length <= head + tail + 2) return addr;
   return `${addr.slice(0, head)}…${addr.slice(-tail)}`;
+}
+
+/** Empty string is valid (optional field). */
+function validateDelegationEth(raw: string): string | null {
+  const t = raw.trim();
+  if (t === "") return null;
+  if (!/^\d*\.?\d+$/.test(t) || Number.isNaN(Number(t))) {
+    return "Enter a valid ETH amount (e.g. 0.25).";
+  }
+  const n = Number(t);
+  if (n <= 0) return "Delegation amount must be greater than zero.";
+  if (n > 1_000_000) return "Amount seems unreasonably large.";
+  return null;
 }
 
 function contractorInitials(name: string): string {
@@ -165,6 +184,7 @@ export function AgentRegistrationForm() {
     useState<MarketplaceAgentId>("strategist");
   const [labelInput, setLabelInput] = useState("");
   const [thesisPrompt, setThesisPrompt] = useState("");
+  const [delegationEth, setDelegationEth] = useState("");
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -229,6 +249,11 @@ export function AgentRegistrationForm() {
         setStatusMsg(labelErr);
         return;
       }
+      const delegErr = validateDelegationEth(delegationEth);
+      if (delegErr) {
+        setStatusMsg(delegErr);
+        return;
+      }
       const label = labelInput.trim().toLowerCase();
 
       if (parentExpiry === undefined) {
@@ -258,11 +283,51 @@ export function AgentRegistrationForm() {
           ? await waitForTransactionReceipt(publicClient, { hash })
           : null;
         if (receipt?.status === "success" || !publicClient) {
-          setStatusMsg(
-            publicClient
-              ? `Confirmed. Subdomain « ${label}.agentic.eth » created (tx: ${hash.slice(0, 10)}…).`
-              : `Transaction sent: ${hash.slice(0, 10)}… — check Sepolia explorer.`,
-          );
+          let line = publicClient
+            ? `Confirmed. Subdomain « ${label}.agentic.eth » created (tx: ${hash.slice(0, 10)}…).`
+            : `Transaction sent: ${hash.slice(0, 10)}… — check Sepolia explorer.`;
+
+          if (publicClient && receipt?.status === "success") {
+            const agent = MARKETPLACE_AGENTS.find((a) => a.id === selectedAgentId);
+            if (agent) {
+              try {
+                const resolver = await publicClient.readContract({
+                  address: registrar,
+                  abi: agenticSubdomainAbi,
+                  functionName: "publicResolver",
+                });
+                const fullName = `${label}.agentic.eth`;
+                const pairs = buildAgenticRegistrationTextRecords({
+                  label,
+                  topicValues: selectedInterests,
+                  thesisPrompt,
+                  agent,
+                  delegationEthIntent: delegationEth.trim(),
+                });
+                const calldatas = encodeSetTextMulticallPayload(
+                  fullName,
+                  pairs,
+                );
+                const metaHash = await writeContractAsync({
+                  address: resolver,
+                  abi: ENS_PUBLIC_RESOLVER_ABI,
+                  functionName: "multicall",
+                  args: [calldatas as readonly `0x${string}`[]],
+                  chainId: sepolia.id,
+                });
+                line += ` ENS text records written (tx: ${metaHash.slice(0, 10)}…).`;
+              } catch (metaErr) {
+                const hint =
+                  metaErr instanceof Error ? metaErr.message : "Unknown error";
+                line += ` Subdomain is live, but metadata could not be written: ${hint}`;
+              }
+            } else {
+              line +=
+                " Subdomain is live; skipped ENS metadata (no matching agent profile).";
+            }
+          }
+
+          setStatusMsg(line);
         } else if (receipt) {
           setStatusMsg("The transaction failed on-chain.");
         }
@@ -280,9 +345,13 @@ export function AgentRegistrationForm() {
       publicClient,
       expiryError,
       isConnected,
+      delegationEth,
       labelInput,
       parentExpiry,
       registrar,
+      selectedAgentId,
+      selectedInterests,
+      thesisPrompt,
       switchChainAsync,
       writeContractAsync,
     ],
@@ -336,8 +405,12 @@ export function AgentRegistrationForm() {
                 <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">
                   name.agentic.eth
                 </span>{" "}
-                on Sepolia to register; perceive → reason → act is how execution
-                unfolds afterward. Wallet required.
+                on Sepolia (first tx), then confirm writing your answers as{" "}
+                <strong className="font-medium text-slate-600 dark:text-slate-400">
+                  ENS text records
+                </strong>{" "}
+                on the public resolver (second tx). Perceive → reason → act is
+                how execution unfolds afterward. Wallet required.
               </p>
             </fieldset>
 
@@ -349,8 +422,8 @@ export function AgentRegistrationForm() {
                 id="areas-interest-hint"
                 className="mb-3 text-xs text-slate-500 dark:text-slate-500"
               >
-                Optional themes for your thesis · not stored on-chain with this
-                tx
+                Optional themes for your thesis · saved as ENS text when you
+                confirm metadata
               </p>
               <div
                 className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-slate-100 pb-3 dark:border-slate-800"
@@ -427,8 +500,8 @@ export function AgentRegistrationForm() {
                 className="mb-3 max-w-2xl text-xs leading-relaxed text-slate-500 dark:text-slate-500"
               >
                 Optional · spell out your thesis and how you analyse markets
-                (drivers, evidence, risks). Not stored on-chain with this
-                transaction.
+                (drivers, evidence, risks). Written as ENS text when you confirm
+                metadata.
               </p>
               <textarea
                 id="thesis-prompt"
@@ -449,7 +522,9 @@ export function AgentRegistrationForm() {
               <p className="mb-1 max-w-2xl text-xs leading-relaxed text-slate-500 dark:text-slate-500">
                 Pick a profile aligned with how you trade or forecast—prediction
                 markets, crypto, and other contexts. Access fee (ETH) is per
-                agent and is not collected by the ENS registration below.
+                agent; add how much you intend to delegate in ETH below. Agent
+                choice and fees are reflected in ENS text records (metadata tx),
+                not in the subdomain registration call.
               </p>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {MARKETPLACE_AGENTS.map((agent: MarketplaceAgent) => {
@@ -527,6 +602,37 @@ export function AgentRegistrationForm() {
                   );
                 })}
               </div>
+
+              <div className="mt-6 max-w-md space-y-2 border-t border-slate-100 pt-6 dark:border-slate-800">
+                <FieldLabel htmlFor="delegation-eth">
+                  Amount to delegate (ETH)
+                </FieldLabel>
+                <p
+                  id="delegation-eth-hint"
+                  className="text-xs leading-relaxed text-slate-500 dark:text-slate-500"
+                >
+                  Optional · intended delegation for this agent&apos;s execution.
+                  Stored as ENS text when you confirm metadata.
+                </p>
+                <div className="flex max-w-[14rem] items-center gap-2">
+                  <input
+                    id="delegation-eth"
+                    name="delegationEth"
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    placeholder="0.0"
+                    value={delegationEth}
+                    onChange={(e) => setDelegationEth(e.target.value)}
+                    aria-describedby="delegation-eth-hint"
+                    className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm tabular-nums text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-400/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-slate-500 dark:focus:ring-slate-500/20"
+                  />
+                  <span className="shrink-0 text-sm font-semibold text-slate-600 dark:text-slate-400">
+                    ETH
+                  </span>
+                </div>
+              </div>
+
               {selectedAgent ? (
                 <p className="rounded-lg border border-slate-200/90 bg-slate-50/70 px-3 py-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-400">
                   Agent{" "}
@@ -537,7 +643,18 @@ export function AgentRegistrationForm() {
                   <span className="font-mono font-semibold tabular-nums text-slate-800 dark:text-slate-200">
                     {selectedAgent.accessPriceEth} ETH
                   </span>{" "}
-                  access —{" "}
+                  access
+                  {delegationEth.trim() ? (
+                    <>
+                      {" "}
+                      · delegate{" "}
+                      <span className="font-mono font-semibold tabular-nums text-slate-800 dark:text-slate-200">
+                        {delegationEth.trim()}
+                      </span>{" "}
+                      ETH
+                    </>
+                  ) : null}{" "}
+                  —{" "}
                   <span className="text-slate-500 dark:text-slate-500">
                     settle separately from the ENS tx.
                   </span>
@@ -571,10 +688,10 @@ export function AgentRegistrationForm() {
                   <span className="text-[10px] transition-transform group-open:rotate-90">
                     ▸
                   </span>
-                  Contract · expiry
+                  Contract · expiry · ENS text keys
                 </span>
               </summary>
-              <div className="mt-3 space-y-2 border-l-2 border-slate-200 pl-3 font-mono text-[11px] leading-relaxed text-slate-500 dark:border-slate-700 dark:text-slate-500">
+              <div className="mt-3 space-y-3 border-l-2 border-slate-200 pl-3 font-mono text-[11px] leading-relaxed text-slate-500 dark:border-slate-700 dark:text-slate-500">
                 <p className="break-all">{registrar}</p>
                 <p>
                   Parent expiry ·{" "}
@@ -584,6 +701,16 @@ export function AgentRegistrationForm() {
                       ? "unavailable"
                       : "loading…"}
                 </p>
+                <div className="font-sans text-[11px]">
+                  <p className="mb-1.5 font-medium text-slate-600 dark:text-slate-400">
+                    Metadata keys (public resolver / multicall)
+                  </p>
+                  <ul className="list-inside list-disc space-y-0.5 text-slate-500 dark:text-slate-500">
+                    {Object.values(AGENTIC_ENS_TEXT_KEYS).map((k) => (
+                      <li key={k}>{k}</li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             </details>
 
@@ -598,7 +725,9 @@ export function AgentRegistrationForm() {
                 }
                 className="w-full rounded-xl bg-slate-900 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:disabled:opacity-35"
               >
-                {isSubmitting ? "Confirm in wallet…" : "Register on Sepolia"}
+                {isSubmitting
+                  ? "Confirm in wallet…"
+                  : "Register on Sepolia · write metadata"}
               </button>
             </div>
           </div>

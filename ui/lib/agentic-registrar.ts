@@ -16,6 +16,7 @@ export const agenticSubdomainAbi = parseAbi([
   "function setSubdomain(string label, address agentAddress, uint64 _expiry) external",
   "function nameWrapper() view returns (address)",
   "function parentNode() view returns (bytes32)",
+  "function publicResolver() view returns (address)",
 ]);
 
 export const nameWrapperViewAbi = parseAbi([
