@@ -142,7 +142,7 @@ export default function DashboardPage() {
               />
             ) : (
               <div
-                className="h-full w-full bg-gradient-to-br from-violet-400/35 via-sky-300/25 to-indigo-500/35 dark:from-violet-600/25 dark:via-sky-900/30 dark:to-indigo-900/40"
+                className="h-full w-full bg-gradient-to-br from-slate-200/90 via-slate-100 to-slate-300/80 dark:from-slate-800 dark:via-slate-900 dark:to-slate-950"
                 aria-hidden
               />
             )}

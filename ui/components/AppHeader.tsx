@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ConnectKitButton } from "connectkit";
 import { useAccount } from "wagmi";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 type EthereumLike = {
   request: (args: {
@@ -93,24 +94,27 @@ export function AppHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-zinc-200 bg-white/90 backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-950/90">
+    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/90">
       <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
         <Link
           href="/"
-          className="text-sm font-semibold tracking-tight text-zinc-950 dark:text-zinc-50"
+          className="text-xl leading-none text-slate-900 transition-opacity hover:opacity-80 dark:text-slate-100"
+          aria-label="Home — agents"
+          title="Agentic execution & prediction"
         >
-          Predictive Intelligence
+          <span aria-hidden>🤖</span>
         </Link>
 
         <nav className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <ThemeToggle />
           <ConnectKitButton />
           {isConnected ? (
             <Link
               href="/dashboard"
-              className="group inline-flex items-center gap-1.5 rounded-full border border-zinc-200/90 bg-gradient-to-b from-white to-zinc-50 px-3 py-1.5 text-xs font-semibold tracking-tight text-zinc-800 shadow-sm ring-1 ring-black/[0.04] transition-all hover:border-emerald-500/45 hover:from-emerald-50/90 hover:to-white hover:text-emerald-950 hover:shadow-md hover:ring-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500/60 dark:border-zinc-700 dark:from-zinc-900 dark:to-zinc-950 dark:text-zinc-100 dark:ring-white/[0.06] dark:hover:border-emerald-500/50 dark:hover:from-emerald-950/50 dark:hover:to-zinc-900 dark:hover:text-emerald-100 sm:px-3.5 sm:py-2 sm:text-sm"
+              className="group inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-slate-50/90 px-3 py-1.5 text-xs font-semibold tracking-tight text-slate-800 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-slate-600 dark:hover:bg-slate-800 sm:px-3.5 sm:py-2 sm:text-sm"
             >
               <span
-                className="text-emerald-600 transition-colors group-hover:text-emerald-700 dark:text-emerald-400 dark:group-hover:text-emerald-300"
+                className="text-slate-500 transition-colors group-hover:text-slate-800 dark:text-slate-400 dark:group-hover:text-slate-200"
                 aria-hidden
               >
                 <svg
