@@ -1,0 +1,82 @@
+{
+  "transactions": [
+    {
+      "hash": "0xcbeb2f076ea985609ab56c9aebe3f989a103fe2f35fd6b187850d768794952f4",
+      "transactionType": "CALL",
+      "contractName": "AgenticSubdomain",
+      "contractAddress": "0x61067458871322ed5438f8b93ebb46368f9eeac6",
+      "function": "setSubdomain(string,address,uint64)",
+      "arguments": [
+        "agent0",
+        "0x224b11F0747c7688a10aCC15F785354aA6493ED6",
+        "2100769908"
+      ],
+      "transaction": {
+        "from": "0x224b11f0747c7688a10acc15f785354aa6493ed6",
+        "to": "0x61067458871322ed5438f8b93ebb46368f9eeac6",
+        "gas": "0x36e33",
+        "value": "0x0",
+        "input": "0x69936e560000000000000000000000000000000000000000000000000000000000000060000000000000000000000000224b11f0747c7688a10acc15f785354aa6493ed6000000000000000000000000000000000000000000000000000000007d37347400000000000000000000000000000000000000000000000000000000000000066167656e74300000000000000000000000000000000000000000000000000000",
+        "nonce": "0x2b",
+        "chainId": "0xaa36a7"
+      },
+      "additionalContracts": [],
+      "isFixedGasLimit": false
+    },
+    {
+      "hash": null,
+      "transactionType": "CALL",
+      "contractName": "AgenticSubdomain",
+      "contractAddress": "0x61067458871322ed5438f8b93ebb46368f9eeac6",
+      "function": "setSubdomain(string,address,uint64)",
+      "arguments": [
+        "agent1",
+        "0x224b11F0747c7688a10aCC15F785354aA6493ED6",
+        "2100769908"
+      ],
+      "transaction": {
+        "from": "0x224b11f0747c7688a10acc15f785354aa6493ed6",
+        "to": "0x61067458871322ed5438f8b93ebb46368f9eeac6",
+        "gas": "0x36e33",
+        "value": "0x0",
+        "input": "0x69936e560000000000000000000000000000000000000000000000000000000000000060000000000000000000000000224b11f0747c7688a10acc15f785354aa6493ed6000000000000000000000000000000000000000000000000000000007d37347400000000000000000000000000000000000000000000000000000000000000066167656e74310000000000000000000000000000000000000000000000000000",
+        "nonce": "0x2c",
+        "chainId": "0xaa36a7"
+      },
+      "additionalContracts": [],
+      "isFixedGasLimit": false
+    },
+    {
+      "hash": null,
+      "transactionType": "CALL",
+      "contractName": "AgenticSubdomain",
+      "contractAddress": "0x61067458871322ed5438f8b93ebb46368f9eeac6",
+      "function": "setSubdomain(string,address,uint64)",
+      "arguments": [
+        "agent2",
+        "0x224b11F0747c7688a10aCC15F785354aA6493ED6",
+        "2100769908"
+      ],
+      "transaction": {
+        "from": "0x224b11f0747c7688a10acc15f785354aa6493ed6",
+        "to": "0x61067458871322ed5438f8b93ebb46368f9eeac6",
+        "gas": "0x36e33",
+        "value": "0x0",
+        "input": "0x69936e560000000000000000000000000000000000000000000000000000000000000060000000000000000000000000224b11f0747c7688a10acc15f785354aa6493ed6000000000000000000000000000000000000000000000000000000007d37347400000000000000000000000000000000000000000000000000000000000000066167656e74320000000000000000000000000000000000000000000000000000",
+        "nonce": "0x2d",
+        "chainId": "0xaa36a7"
+      },
+      "additionalContracts": [],
+      "isFixedGasLimit": false
+    }
+  ],
+  "receipts": [],
+  "libraries": [],
+  "pending": [
+    "0xcbeb2f076ea985609ab56c9aebe3f989a103fe2f35fd6b187850d768794952f4"
+  ],
+  "returns": {},
+  "timestamp": 1777553203972,
+  "chain": 11155111,
+  "commit": "828894b"
+}
