@@ -114,6 +114,44 @@ Enregistre l’adresse **du contrat déployé** :
 export REGISTRAR_CONTRACT_ADDRESS=0x...   # smart contract AgenticSubdomain (registrar)
 ```
 
+### Vérifier le code sur Etherscan (Sepolia)
+
+Après un déploiement sur la **vraie** Sepolia, tu peux publier le source avec Foundry — l’explorateur est [sepolia.etherscan.io](https://sepolia.etherscan.io).
+
+1. Crée une clé API sur [etherscan.io/apis](https://etherscan.io/apis) (valable pour les explorateurs Etherscan, dont Sepolia).
+2. Exporte-la (ne la commite pas) : `export ETHERSCAN_API_KEY=...`
+
+**Avec les arguments du constructor** (mêmes valeurs que le script de deploy : NameWrapper, `namehash(agentic.eth)`, Public Resolver) :
+
+```bash
+forge verify-contract REGISTRAR_CONTRACT_ADDRESS \
+  src/AgenticSubdomain.sol:AgenticSubdomain \
+  --chain sepolia \
+  --etherscan-api-key "$ETHERSCAN_API_KEY" \
+  --constructor-args $(cast abi-encode "constructor(address,bytes32,address)" \
+    0x0635513f179D50A207757E05759CbD106d7dFcE8 \
+    0xa5a5de1b77998a2f087d62b345f66c119d03c7137e0dc19724a45235b1cd9bcf \
+    0xE99638b40E4Fff0129D56f03b55b6bbC4BBE49b5) \
+  --watch
+```
+
+Remplace `REGISTRAR_CONTRACT_ADDRESS` par l’adresse affichée au deploy (ex. `0x6106...`).
+
+**Variante** : laisser Foundry inférer les arguments encodés (parfois suffisant) :
+
+```bash
+forge verify-contract REGISTRAR_CONTRACT_ADDRESS \
+  src/AgenticSubdomain.sol:AgenticSubdomain \
+  --chain sepolia \
+  --etherscan-api-key "$ETHERSCAN_API_KEY" \
+  --guess-constructor-args \
+  --watch
+```
+
+En cas d’échec (version de compilateur, optimiser), voir `forge verify-contract --help` (`--compiler-version`, `--num-of-optimizations`).
+
+Lien direct une fois vérifié : `https://sepolia.etherscan.io/address/<REGISTRAR_CONTRACT_ADDRESS>#code`
+
 ---
 
 ## 4. Étape B — Approuver le registrar sur le NameWrapper
@@ -153,6 +191,7 @@ Le script enregistre `dayan`, `nicolas`, `gabriel` sous `agentic.eth` ; modifie 
 REGISTRAR_CONTRACT_ADDRESS=0x... forge script script/AgenticSubdomainRegisterThree.s.sol:AgenticSubdomainRegisterThree \
   --rpc-url "$RPC_URL" \
   --private-key PRIVATE_KEY_CALLER \
+  --slow \
   --broadcast
 ```
 
@@ -164,6 +203,7 @@ SUBNAME_OWNER_ADDRESS=0xTonWalletQuiRecoitLesSousNoms \
 forge script script/AgenticSubdomainRegisterThree.s.sol:AgenticSubdomainRegisterThree \
   --rpc-url "$RPC_URL" \
   --private-key PRIVATE_KEY_CALLER \
+  --slow \
   --broadcast
 ```
 
@@ -174,9 +214,11 @@ forge script script/AgenticSubdomainRegisterThree.s.sol:AgenticSubdomainRegister
   --sig "runWithAddress(address)" 0xAdresseDuContratAgenticSubdomain \
   --rpc-url "$RPC_URL" \
   --private-key PRIVATE_KEY_CALLER \
+  --slow \
   --broadcast
 ```
 
+- **`--slow`** : une transaction est envoyée **seulement après** confirmation de la précédente. Indispensable sur certains RPC (ex. Alchemy) qui limitent les txs « en vol » sur une même séquence — sinon erreur *in-flight transaction limit*.
 - `parentExpiry` est lue automatiquement (contrainte ENS).
 - **Propriétaire des sous-noms** : `SUBNAME_OWNER_ADDRESS` si défini, sinon l’adresse de `PRIVATE_KEY_CALLER` (`msg.sender`).
 
@@ -258,6 +300,7 @@ En pratique, pour « tous les sous-noms d’un parent », le **subgraph** (`subd
 | Revert après redémarrage d’Anvil | Le fork repart à zéro : **redéployer**, **ré-approuver**, ré-enregistrer. |
 | `setSubdomain` refuse alors que tu es owner du parent | Vérifie que l’étape **B** a bien été faite avec la clé du **owner** de `agentic.eth`, pour **`REGISTRAR_CONTRACT_ADDRESS`** (le bon contrat déployé). |
 | `ERC1155: transfer to non ERC1155Receiver implementer` | Le NameWrapper **mint** un NFT vers l’adresse `owner` du sous-nom. Si cette adresse a du **code** (contrat sans `onERC1155Received`), ou un edge case sur un fork, ça revert. Sur fork Sepolia, **évite la clé Anvil #0** (`0xf39F…`, clé publique) comme owner : utilise ton **vrai wallet** : `SUBNAME_OWNER_ADDRESS=0x...` (EOA sans code). Vérifie avec `cast code 0x... --rpc-url "$RPC_URL"` (doit être `0x`). |
+| `in-flight transaction limit reached for delegated accounts` (RPC **-32000**) | Le fournisseur (souvent **Alchemy**) refuse plusieurs txs **pending** d’affilée. Relance le script avec **`--slow`** (attend la confirmation entre chaque tx). Ou attends une minute et réessaie ; ou change temporairement de **RPC**. |
 
 ---
 

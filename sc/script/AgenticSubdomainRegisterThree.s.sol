@@ -17,6 +17,8 @@ interface INameWrapperView {
 ///      Subname owner: set `SUBNAME_OWNER_ADDRESS=0x...` (recommandé sur un fork : le compte EOA
 ///      « propre », pas la clé Anvil #0 — voir README). Sinon = `msg.sender` (clé `--private-key`).
 ///      Expiry = parent (lu sur le NameWrapper).
+///      En broadcast sur un RPC (ex. Alchemy), utiliser `forge script ... --slow --broadcast` pour
+///      séquencer les 3 txs (évite *in-flight transaction limit*).
 contract AgenticSubdomainRegisterThree is Script {
     /// @dev `REGISTRAR_CONTRACT_ADDRESS=0x... forge script ...`
     function run() public {
@@ -38,9 +40,9 @@ contract AgenticSubdomainRegisterThree is Script {
 
         vm.startBroadcast();
 
-        r.setSubdomain("dayan", subnameOwner, parentExpiry);
-        r.setSubdomain("nicolas", subnameOwner, parentExpiry);
-        r.setSubdomain("gabriel", subnameOwner, parentExpiry);
+        r.setSubdomain("agent0", subnameOwner, parentExpiry);
+        r.setSubdomain("agent1", subnameOwner, parentExpiry);
+        r.setSubdomain("agent2", subnameOwner, parentExpiry);
 
         vm.stopBroadcast();
     }
