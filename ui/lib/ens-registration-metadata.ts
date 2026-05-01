@@ -11,31 +11,32 @@ export const ENS_PUBLIC_RESOLVER_ABI = parseAbi([
   "function multicall(bytes[] data) external returns (bytes[])",
 ]);
 
-/** Custom ENS text keys (vendor-style dotted namespace). */
+/**
+ * ENS `setText` keys for Agentic registration metadata.
+ *
+ * Uses a dotted vendor prefix (`agentic.*`) plus camelCase tails so keys stay
+ * readable and avoid collisions with reserved/global ENS text records (ENSIP-5),
+ * following the same idea as ecosystem keys like `com.twitter` / `org.telegram`.
+ *
+ * Logical fields: focusDomain, thesisPrompt, agentName, delegatedAmount.
+ */
 export const AGENTIC_ENS_TEXT_KEYS = {
-  schema: "agentic.registration.schema",
-  nameLabel: "agentic.name.label",
-  nameFull: "agentic.name.full",
-  focusTopicIds: "agentic.focus.topicIds",
-  focusTopicLabels: "agentic.focus.topicLabels",
-  thesisPrompt: "agentic.thesis.prompt",
-  agentId: "agentic.agent.id",
-  agentName: "agentic.agent.name",
-  agentTagline: "agentic.agent.tagline",
-  agentAccessEth: "agentic.agent.accessEth",
-  delegateIntentEth: "agentic.delegate.intentEth",
+  focusDomain: "agentic.focusDomain",
+  thesisPrompt: "agentic.thesisPrompt",
+  agentName: "agentic.agentName",
+  delegatedAmount: "agentic.delegatedAmount",
 } as const;
 
 export type AgenticRegistrationMetadataInput = {
-  /** Normalized label only (no `.agentic.eth`). */
-  label: string;
   topicValues: readonly InterestTopicValue[];
   thesisPrompt: string;
   agent: MarketplaceAgent;
+  /** Delegation intent as a decimal ETH string; may be empty when omitted. */
   delegationEthIntent: string;
 };
 
-function topicLabels(values: readonly InterestTopicValue[]): string {
+/** Human-readable focus domains (comma-separated topic labels). */
+function formatFocusDomain(values: readonly InterestTopicValue[]): string {
   return values
     .map(
       (v) => INTEREST_TOPICS.find((t) => t.value === v)?.label ?? String(v),
@@ -43,33 +44,25 @@ function topicLabels(values: readonly InterestTopicValue[]): string {
     .join(", ");
 }
 
+/** Builds exactly four text records for the public resolver multicall. */
 export function buildAgenticRegistrationTextRecords(
   input: AgenticRegistrationMetadataInput,
 ): { key: string; value: string }[] {
-  const topicIds = input.topicValues.join(",");
-  const labels = topicLabels(input.topicValues);
-
-  const full = `${input.label}.agentic.eth`;
-
   return [
-    { key: AGENTIC_ENS_TEXT_KEYS.schema, value: "agentic-registration-v1" },
-    { key: AGENTIC_ENS_TEXT_KEYS.nameLabel, value: input.label },
-    { key: AGENTIC_ENS_TEXT_KEYS.nameFull, value: full },
-    { key: AGENTIC_ENS_TEXT_KEYS.focusTopicIds, value: topicIds },
-    { key: AGENTIC_ENS_TEXT_KEYS.focusTopicLabels, value: labels },
+    {
+      key: AGENTIC_ENS_TEXT_KEYS.focusDomain,
+      value: formatFocusDomain(input.topicValues),
+    },
     {
       key: AGENTIC_ENS_TEXT_KEYS.thesisPrompt,
       value: input.thesisPrompt.trim(),
     },
-    { key: AGENTIC_ENS_TEXT_KEYS.agentId, value: input.agent.id },
-    { key: AGENTIC_ENS_TEXT_KEYS.agentName, value: input.agent.name },
-    { key: AGENTIC_ENS_TEXT_KEYS.agentTagline, value: input.agent.tagline },
     {
-      key: AGENTIC_ENS_TEXT_KEYS.agentAccessEth,
-      value: input.agent.accessPriceEth,
+      key: AGENTIC_ENS_TEXT_KEYS.agentName,
+      value: input.agent.name,
     },
     {
-      key: AGENTIC_ENS_TEXT_KEYS.delegateIntentEth,
+      key: AGENTIC_ENS_TEXT_KEYS.delegatedAmount,
       value: input.delegationEthIntent.trim(),
     },
   ];

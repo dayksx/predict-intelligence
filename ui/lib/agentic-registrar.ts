@@ -58,51 +58,33 @@ export type MarketplaceAgent = {
 export const MARKETPLACE_AGENTS: readonly MarketplaceAgent[] = [
   {
     id: "strategist",
-    name: "Atlas",
-    tagline: "Geopolitical intelligence",
+    name: "Geopolitic",
+    tagline: "Geopolitical prediction markets",
     description:
-      "Macro scenarios and geopolitical signals for thesis-led views across prediction and traditional markets.",
-    accessPriceEth: "0.05",
+      "Long and short views on geopolitical outcomes, with access to a dedicated geopolitical prediction market.",
+    accessPriceEth: "0.01",
     capabilities: [
-      "Swap & trading",
-      "Predictive market positioning",
-      "DAO voting & delegation",
-      "Policy & sanctions radar",
-      "Macro scenario briefs",
-      "Cross-asset regime signals",
+      "Long / Short markets",
+      "Geopolitic Predictive Market",
     ],
   },
   {
     id: "alpha",
-    name: "Pulse",
-    tagline: "Crypto & on-chain",
+    name: "Crypto",
+    tagline: "Crypto prediction markets",
     description:
-      "On-chain flow and narrative timing for crypto-native theses and execution.",
-    accessPriceEth: "0.12",
-    capabilities: [
-      "Swap & trading",
-      "Predictive market positioning",
-      "DAO voting & delegation",
-      "DEX & bridge routing",
-      "Liquidity & flow analytics",
-      "Narrative & catalyst alerts",
-    ],
+      "Swap-related tooling alongside a crypto-focused predictive market for digital-asset theses.",
+    accessPriceEth: "0.01",
+    capabilities: ["Swap", "Crypto Predictive Market"],
   },
   {
     id: "sports",
-    name: "Sideline",
-    tagline: "Sports markets",
+    name: "Sport",
+    tagline: "Sports prediction markets",
     description:
-      "Form, stats, and schedules for sports prediction markets and event-driven trades.",
-    accessPriceEth: "0.08",
-    capabilities: [
-      "Swap & trading",
-      "Predictive market positioning",
-      "DAO voting & delegation",
-      "Injury & lineup intelligence",
-      "Odds & props signals",
-      "Fan-token & event liquidity",
-    ],
+      "Sports-focused predictive markets for event-driven positioning and odds-style outcomes.",
+    accessPriceEth: "0.001",
+    capabilities: ["Sport Predictive Market"],
   },
 ] as const;
 

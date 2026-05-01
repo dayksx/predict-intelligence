@@ -35,6 +35,37 @@ function shortenAddress(addr: string, head = 6, tail = 4): string {
   return `${addr.slice(0, head)}…${addr.slice(-tail)}`;
 }
 
+function shortenTxHash(hash: string, head = 10, tail = 8): string {
+  if (hash.length <= head + tail + 1) return hash;
+  return `${hash.slice(0, head)}…${hash.slice(-tail)}`;
+}
+
+/** Sepolia L2/sidechain explorer — canonical public txs view */
+function sepoliaEtherscanTxUrl(hash: string): string {
+  return `https://sepolia.etherscan.io/tx/${hash}`;
+}
+
+/** ENS Manager on Sepolia — name & text records */
+function ensSepoliaAppNameUrl(fullName: string): string {
+  return `https://sepolia.app.ens.domains/${encodeURIComponent(fullName)}`;
+}
+
+/** ENS Explorer (alpha) — protocol-level name lookup */
+function ensExplorerNameUrl(fullName: string): string {
+  return `https://explorer.ens.dev/name/${encodeURIComponent(fullName)}`;
+}
+
+type RegistrationStatus =
+  | null
+  | { type: "error"; message: string }
+  | {
+      type: "success";
+      fullName: string;
+      subdomainTx: `0x${string}`;
+      metadataTx?: `0x${string}`;
+      metadataFailedNote?: string;
+    };
+
 function readExpiryFromGetData(data: unknown): bigint | undefined {
   if (data == null) return undefined;
   if (Array.isArray(data) && data.length >= 3) {
@@ -80,7 +111,7 @@ function FieldLabel({
   return (
     <label
       htmlFor={htmlFor}
-      className="mb-1.5 block text-[11px] font-semibold tracking-[0.08em] text-slate-500 uppercase dark:text-slate-400"
+      className="mb-1.5 block text-[11px] font-semibold tracking-[0.08em] text-sky-950/55 uppercase dark:text-sky-200/70"
     >
       {children}
     </label>
@@ -96,7 +127,7 @@ function SectionTitle({
   as?: "h2" | "h3";
 }) {
   return (
-    <Tag className="mb-1 text-[15px] font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+    <Tag className="mb-2 border-l-[3px] border-sky-400/45 pl-3 text-[15px] font-semibold tracking-tight text-slate-900 dark:border-sky-500/40 dark:text-slate-50">
       {children}
     </Tag>
   );
@@ -114,7 +145,7 @@ function HelperText({
   return (
     <p
       id={id}
-      className={`text-xs leading-relaxed text-slate-500 dark:text-slate-400 ${className}`}
+      className={`text-xs leading-relaxed text-slate-600 dark:text-slate-400 ${className}`}
     >
       {children}
     </p>
@@ -122,7 +153,7 @@ function HelperText({
 }
 
 const formCardClass =
-  "rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-950 sm:p-6";
+  "rounded-lg border border-sky-100/55 bg-gradient-to-br from-sky-50/45 via-white to-white p-5 dark:border-sky-950/30 dark:from-sky-950/12 dark:via-slate-950 dark:to-slate-950 sm:p-6";
 
 function FormStepCard({
   id,
@@ -202,7 +233,7 @@ function RegistrationStepsNav({
             <li key={step.id} className="flex items-center gap-x-1.5">
               {i > 0 ? (
                 <span
-                  className="text-slate-300 select-none dark:text-slate-600"
+                  className="text-sky-200/55 select-none dark:text-sky-800/50"
                   aria-hidden
                 >
                   ·
@@ -210,10 +241,10 @@ function RegistrationStepsNav({
               ) : null}
               <a
                 href={`#${step.id}`}
-                className={`rounded-md px-1.5 py-1 leading-tight transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 ${
+                className={`rounded-md px-1.5 py-1 leading-tight transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400/70 ${
                   isActive
-                    ? "bg-slate-200/90 text-slate-900 dark:bg-slate-700 dark:text-slate-100"
-                    : "text-slate-500 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-200"
+                    ? "bg-sky-100/80 text-sky-950 dark:bg-sky-950/35 dark:text-sky-100"
+                    : "text-slate-500 hover:text-sky-900 dark:text-slate-500 dark:hover:text-sky-200"
                 }`}
                 aria-current={isActive ? "step" : undefined}
               >
@@ -243,7 +274,8 @@ export function AgentRegistrationForm() {
   const [labelInput, setLabelInput] = useState("");
   const [thesisPrompt, setThesisPrompt] = useState("");
   const [delegationEth, setDelegationEth] = useState("");
-  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [registrationStatus, setRegistrationStatus] =
+    useState<RegistrationStatus>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { data: parentNode } = useReadContract({
@@ -286,10 +318,13 @@ export function AgentRegistrationForm() {
   const onSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      setStatusMsg(null);
+      setRegistrationStatus(null);
 
       if (!isConnected || !address) {
-        setStatusMsg("Connect your wallet first.");
+        setRegistrationStatus({
+          type: "error",
+          message: "Connect your wallet first.",
+        });
         return;
       }
 
@@ -297,29 +332,33 @@ export function AgentRegistrationForm() {
         try {
           await switchChainAsync({ chainId: sepolia.id });
         } catch {
-          setStatusMsg("Switch to the Sepolia network to register.");
+          setRegistrationStatus({
+            type: "error",
+            message: "Switch to the Sepolia network to register.",
+          });
           return;
         }
       }
 
       const labelErr = validateEnsLabel(labelInput);
       if (labelErr) {
-        setStatusMsg(labelErr);
+        setRegistrationStatus({ type: "error", message: labelErr });
         return;
       }
       const delegErr = validateDelegationEth(delegationEth);
       if (delegErr) {
-        setStatusMsg(delegErr);
+        setRegistrationStatus({ type: "error", message: delegErr });
         return;
       }
       const label = labelInput.trim().toLowerCase();
 
       if (parentExpiry === undefined) {
-        setStatusMsg(
-          expiryError
+        setRegistrationStatus({
+          type: "error",
+          message: expiryError
             ? "Could not read parent expiry on Sepolia. Check your RPC."
             : "Loading parent expiry… try again in a moment.",
-        );
+        });
         return;
       }
 
@@ -341,9 +380,9 @@ export function AgentRegistrationForm() {
           ? await waitForTransactionReceipt(publicClient, { hash })
           : null;
         if (receipt?.status === "success" || !publicClient) {
-          let line = publicClient
-            ? `Confirmed. Subdomain « ${label}.agentic.eth » created (tx: ${hash.slice(0, 10)}…).`
-            : `Transaction sent: ${hash.slice(0, 10)}… — check Sepolia explorer.`;
+          const fullName = `${label}.agentic.eth` as const;
+          let metadataTx: `0x${string}` | undefined;
+          let metadataFailedNote: string | undefined;
 
           if (publicClient && receipt?.status === "success") {
             const agent = MARKETPLACE_AGENTS.find((a) => a.id === selectedAgentId);
@@ -354,9 +393,7 @@ export function AgentRegistrationForm() {
                   abi: agenticSubdomainAbi,
                   functionName: "publicResolver",
                 });
-                const fullName = `${label}.agentic.eth`;
                 const pairs = buildAgenticRegistrationTextRecords({
-                  label,
                   topicValues: selectedInterests,
                   thesisPrompt,
                   agent,
@@ -373,26 +410,35 @@ export function AgentRegistrationForm() {
                   args: [calldatas as readonly `0x${string}`[]],
                   chainId: sepolia.id,
                 });
-                line += ` ENS text records written (tx: ${metaHash.slice(0, 10)}…).`;
+                metadataTx = metaHash;
               } catch (metaErr) {
                 const hint =
                   metaErr instanceof Error ? metaErr.message : "Unknown error";
-                line += ` Subdomain is live, but metadata could not be written: ${hint}`;
+                metadataFailedNote = `Metadata was not written: ${hint}`;
               }
             } else {
-              line +=
-                " Subdomain is live; skipped ENS metadata (no matching agent profile).";
+              metadataFailedNote =
+                "ENS metadata skipped (no matching agent profile).";
             }
           }
 
-          setStatusMsg(line);
+          setRegistrationStatus({
+            type: "success",
+            fullName,
+            subdomainTx: hash,
+            metadataTx,
+            metadataFailedNote,
+          });
         } else if (receipt) {
-          setStatusMsg("The transaction failed on-chain.");
+          setRegistrationStatus({
+            type: "error",
+            message: "The transaction failed on-chain.",
+          });
         }
       } catch (err) {
         const msg =
           err instanceof Error ? err.message : "Transaction cancelled or error.";
-        setStatusMsg(msg);
+        setRegistrationStatus({ type: "error", message: msg });
       } finally {
         setIsSubmitting(false);
       }
@@ -418,7 +464,7 @@ export function AgentRegistrationForm() {
   const selectedAgent = MARKETPLACE_AGENTS.find((a) => a.id === selectedAgentId);
 
   const inputBase =
-    "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-0 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-400";
+    "w-full rounded-lg border border-slate-200/95 bg-white px-3 py-2.5 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-500/85 focus:ring-0 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400/80";
 
   const submitDisabled =
     !hasMounted ||
@@ -437,8 +483,8 @@ export function AgentRegistrationForm() {
 
   return (
     <div className="w-full max-w-4xl">
-      <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-        <header className="border-b border-slate-100 bg-slate-50/90 dark:border-slate-800 dark:bg-slate-900/40">
+      <article className="overflow-hidden rounded-2xl border border-sky-100/60 bg-white dark:border-sky-950/35 dark:bg-slate-950">
+        <header className="border-b border-sky-100/50 bg-gradient-to-r from-sky-50/35 via-white to-white dark:border-slate-800 dark:from-slate-900 dark:via-slate-950 dark:to-slate-950">
           <h1 className="sr-only">Registration</h1>
           <div className="flex flex-col gap-3 px-6 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
             <RegistrationStepsNav navClassName="min-w-0 flex-1 border-0 bg-transparent p-0 dark:bg-transparent" />
@@ -449,10 +495,10 @@ export function AgentRegistrationForm() {
                 </p>
               ) : isConnected && address ? (
                 <p className="text-[11px] text-right whitespace-nowrap">
-                  <span className="font-medium text-slate-500 dark:text-slate-500">
+                  <span className="font-medium text-sky-950/55 dark:text-sky-200/65">
                     Owner:{" "}
                   </span>
-                  <span className="font-mono font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                  <span className="font-mono font-semibold tabular-nums text-sky-950 dark:text-sky-100">
                     {shortenAddress(address)}
                   </span>
                 </p>
@@ -478,11 +524,11 @@ export function AgentRegistrationForm() {
                   <SectionTitle>{REGISTRATION_SECTION_LABELS.focus}</SectionTitle>
                   <HelperText className="max-w-2xl">
                     Here you shape your public agent profile:{" "}
-                    <strong className="font-medium text-slate-700 dark:text-slate-300">
+                    <strong className="font-medium text-sky-800/90 dark:text-sky-300/90">
                       Focus
                     </strong>{" "}
                     tags the themes you care about;{" "}
-                    <strong className="font-medium text-slate-700 dark:text-slate-300">
+                    <strong className="font-medium text-sky-800/90 dark:text-sky-300/90">
                       Thesis
                     </strong>{" "}
                     is where you spell out your view, what you monitor, and what
@@ -491,7 +537,7 @@ export function AgentRegistrationForm() {
                     registration succeeds, a separate step writes these fields (and
                     your later choices) into ENS text records on Sepolia so they’re
                     readable on-chain with your{" "}
-                    <span className="font-mono text-[13px] text-slate-700 dark:text-slate-300">
+                    <span className="font-mono text-[13px] text-sky-800/85 dark:text-sky-300/85">
                       *.agentic.eth
                     </span>{" "}
                     name.
@@ -505,7 +551,7 @@ export function AgentRegistrationForm() {
                       Add themes that describe what you track (optional).
                     </HelperText>
                     <div
-                      className="flex flex-wrap items-center gap-x-2 gap-y-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-950"
+                      className="flex flex-wrap items-center gap-x-2 gap-y-2 rounded-lg border border-sky-100/65 bg-white px-3 py-2.5 dark:border-sky-950/25 dark:bg-slate-950"
                       role="group"
                       aria-describedby="areas-interest-hint"
                     >
@@ -519,7 +565,7 @@ export function AgentRegistrationForm() {
                       setSelectedInterests((prev) => [...prev, v]);
                       e.target.value = "";
                     }}
-                    className="h-8 min-w-[8.5rem] cursor-pointer appearance-none rounded-md border border-slate-200 bg-slate-50/80 py-1 pr-7 pl-2.5 text-xs text-slate-800 outline-none transition hover:border-slate-300 hover:bg-slate-100/80 focus-visible:border-slate-400 focus-visible:ring-0 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-900"
+                    className="h-8 min-w-[8.5rem] cursor-pointer appearance-none rounded-md border border-sky-100/80 bg-sky-50/50 py-1 pr-7 pl-2.5 text-xs text-slate-800 outline-none transition hover:border-sky-200/90 hover:bg-sky-50/70 focus-visible:border-sky-400/80 focus-visible:ring-0 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-200 dark:hover:border-sky-800/60 dark:hover:bg-slate-900"
                   >
                     <option value="">Add topic…</option>
                     {INTEREST_TOPICS.filter(
@@ -544,7 +590,7 @@ export function AgentRegistrationForm() {
                       value;
                     return (
                       <li key={value}>
-                        <span className="inline-flex max-w-full items-center gap-0.5 rounded-md border border-slate-200 bg-slate-50 py-0.5 pr-0.5 pl-2 text-[11px] font-medium text-slate-800 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200">
+                        <span className="inline-flex max-w-full items-center gap-0.5 rounded-md border border-sky-100/75 bg-sky-50/55 py-0.5 pr-0.5 pl-2 text-[11px] font-medium text-slate-800 dark:border-sky-900/35 dark:bg-sky-950/25 dark:text-slate-200">
                           <span className="truncate">{topicLabel}</span>
                           <button
                             type="button"
@@ -586,7 +632,7 @@ export function AgentRegistrationForm() {
                       value={thesisPrompt}
                       onChange={(e) => setThesisPrompt(e.target.value)}
                       aria-describedby="thesis-prompt-hint"
-                      className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm leading-relaxed text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-0 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-400"
+                      className="w-full resize-y rounded-lg border border-slate-200/95 bg-white px-3 py-2.5 text-sm leading-relaxed text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-500/85 focus:ring-0 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400/80"
                     />
                   </div>
                 </div>
@@ -615,8 +661,8 @@ export function AgentRegistrationForm() {
                       aria-pressed={selected}
                       className={`flex flex-col rounded-xl border p-5 text-left transition-colors ${
                         selected
-                          ? "border-slate-400 bg-slate-50 dark:border-slate-500 dark:bg-slate-900/70"
-                          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/80 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-700 dark:hover:bg-slate-900/40"
+                          ? "border-sky-300/70 bg-sky-50/55 dark:border-sky-600/45 dark:bg-sky-950/22"
+                          : "border-sky-100/70 bg-white hover:border-sky-200/90 hover:bg-sky-50/35 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-sky-900/50 dark:hover:bg-slate-900/40"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -624,8 +670,8 @@ export function AgentRegistrationForm() {
                           <span
                             className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-semibold tracking-tight ${
                               selected
-                                ? "bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900"
-                                : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                                ? "bg-sky-700 text-white dark:bg-sky-500 dark:text-slate-950"
+                                : "bg-sky-100/90 text-sky-950 dark:bg-slate-800 dark:text-slate-300"
                             }`}
                             aria-hidden
                           >
@@ -640,7 +686,7 @@ export function AgentRegistrationForm() {
                             </span>
                           </div>
                         </div>
-                        <div className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-right dark:border-slate-700 dark:bg-slate-900/70">
+                        <div className="shrink-0 rounded-lg border border-sky-100/80 bg-sky-50/55 px-2.5 py-1.5 text-right dark:border-sky-900/40 dark:bg-sky-950/30">
                           <span className="block font-mono text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                             {agent.accessPriceEth}
                           </span>
@@ -652,15 +698,15 @@ export function AgentRegistrationForm() {
                       <p className="mt-4 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
                         {agent.description}
                       </p>
-                      <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
-                        <p className="text-[10px] font-semibold tracking-[0.12em] text-slate-500 uppercase dark:text-slate-500">
+                      <div className="mt-4 border-t border-sky-100/70 pt-4 dark:border-slate-800">
+                        <p className="text-[10px] font-semibold tracking-[0.12em] text-sky-800/65 uppercase dark:text-sky-300/55">
                           Capabilities
                         </p>
                         <ul className="mt-2.5 flex flex-wrap gap-1.5">
-                          {agent.capabilities.map((cap) => (
+                          {agent.capabilities.slice(0, 3).map((cap) => (
                             <li
                               key={cap}
-                              className="rounded-md border border-slate-200/90 bg-white px-2 py-1 text-[11px] leading-tight font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300"
+                              className="rounded-md border border-sky-100/75 bg-sky-50/40 px-2 py-1 text-[11px] leading-tight font-medium text-slate-700 dark:border-sky-900/35 dark:bg-sky-950/20 dark:text-slate-300"
                             >
                               {cap}
                             </li>
@@ -668,7 +714,7 @@ export function AgentRegistrationForm() {
                         </ul>
                       </div>
                       {selected ? (
-                        <p className="mt-4 text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                        <p className="mt-4 text-[11px] font-semibold text-sky-800 dark:text-sky-300">
                           Selected
                         </p>
                       ) : (
@@ -707,15 +753,15 @@ export function AgentRegistrationForm() {
                   value={delegationEth}
                   onChange={(e) => setDelegationEth(e.target.value)}
                   aria-describedby="delegation-eth-hint"
-                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm tabular-nums text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-0 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-slate-400"
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200/95 bg-white px-3 py-2 font-mono text-sm tabular-nums text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-500/85 focus:ring-0 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400/80"
                 />
-                <span className="shrink-0 text-sm font-semibold text-slate-600 dark:text-slate-400">
+                <span className="shrink-0 text-sm font-semibold text-sky-800/75 dark:text-sky-300/75">
                   ETH
                 </span>
               </div>
 
               {selectedAgent ? (
-                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+                <p className="rounded-lg border border-sky-100/70 bg-sky-50/45 px-3 py-2 text-xs text-slate-600 dark:border-sky-900/35 dark:bg-sky-950/22 dark:text-slate-400">
                   Agent{" "}
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
                     {selectedAgent.name}
@@ -767,15 +813,15 @@ export function AgentRegistrationForm() {
                   onChange={(e) => setLabelInput(e.target.value)}
                   className={`${inputBase} min-w-0 flex-1 sm:min-w-[12rem]`}
                 />
-                <span className="shrink-0 font-mono text-sm font-semibold text-slate-600 tabular-nums dark:text-slate-400">
+                <span className="shrink-0 font-mono text-sm font-semibold text-sky-700/80 tabular-nums dark:text-sky-400/85">
                   .agentic.eth
                 </span>
               </div>
               </fieldset>
             </FormStepCard>
 
-            <details className="group rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs dark:border-slate-700 dark:bg-slate-900">
-              <summary className="cursor-pointer list-none font-medium text-slate-600 transition hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 [&::-webkit-details-marker]:hidden">
+            <details className="group rounded-lg border border-sky-100/65 bg-sky-50/35 px-4 py-3 text-xs dark:border-sky-950/30 dark:bg-sky-950/18">
+              <summary className="cursor-pointer list-none font-medium text-sky-950/80 transition hover:text-sky-950 dark:text-sky-200/90 dark:hover:text-sky-100 [&::-webkit-details-marker]:hidden">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="text-[10px] transition-transform group-open:rotate-90">
                     ▸
@@ -783,7 +829,7 @@ export function AgentRegistrationForm() {
                   Technical details (contract, expiry, metadata keys)
                 </span>
               </summary>
-              <div className="mt-3 space-y-3 border-l-2 border-slate-200 pl-3 font-mono text-[11px] leading-relaxed text-slate-500 dark:border-slate-700 dark:text-slate-500">
+              <div className="mt-3 space-y-3 border-l-2 border-sky-200/55 pl-3 font-mono text-[11px] leading-relaxed text-slate-500 dark:border-sky-800/45 dark:text-slate-500">
                 <p className="break-all">{registrar}</p>
                 <p>
                   Parent expiry ·{" "}
@@ -808,7 +854,7 @@ export function AgentRegistrationForm() {
 
             <FormStepCard
               id="step-register"
-              className="border-slate-300 bg-slate-50 dark:border-slate-600 dark:bg-slate-900"
+              className="border-sky-100/70 bg-sky-50/40 dark:border-sky-900/45 dark:bg-sky-950/28"
             >
               <div className="space-y-4">
                 <SectionTitle as="h3">
@@ -822,11 +868,20 @@ export function AgentRegistrationForm() {
                   type="submit"
                   disabled={submitDisabled}
                   title={submitDisabledTitle}
-                  className="w-full rounded-lg border border-slate-900 bg-slate-900 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:disabled:opacity-35"
+                  aria-busy={isSubmitting}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-700 px-5 py-2.5 text-sm font-medium text-white shadow-sm shadow-sky-900/15 transition-colors hover:bg-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none dark:bg-sky-500 dark:text-slate-950 dark:shadow-black/25 dark:hover:bg-sky-400 dark:focus-visible:ring-sky-400 dark:focus-visible:ring-offset-slate-950 dark:disabled:bg-slate-700 dark:disabled:text-slate-500"
                 >
-                  {isSubmitting
-                    ? "Confirm in wallet…"
-                    : "Register on Sepolia · write metadata"}
+                  {isSubmitting ? (
+                    <>
+                      <span
+                        className="inline-block size-4 shrink-0 animate-spin rounded-full border-2 border-white/35 border-t-white dark:border-slate-950/40 dark:border-t-slate-950"
+                        aria-hidden
+                      />
+                      <span>Confirm in wallet…</span>
+                    </>
+                  ) : (
+                    "Register"
+                  )}
                 </button>
               </div>
             </FormStepCard>
@@ -834,12 +889,92 @@ export function AgentRegistrationForm() {
         </form>
       </article>
 
-      {statusMsg ? (
+      {registrationStatus ? (
         <div
-          className="mt-6 rounded-lg border border-slate-200/90 border-l-[3px] border-l-slate-400 bg-slate-50 py-3 pl-4 pr-4 text-sm leading-relaxed text-slate-700 dark:border-slate-700 dark:border-l-slate-500 dark:bg-slate-900/60 dark:text-slate-200"
+          className={`mt-6 rounded-lg border py-3 pl-4 pr-4 text-sm leading-relaxed ${
+            registrationStatus.type === "error"
+              ? "border-amber-200/90 border-l-[3px] border-l-amber-500 bg-amber-50/90 text-amber-950 dark:border-amber-900/40 dark:border-l-amber-500 dark:bg-amber-950/25 dark:text-amber-100"
+              : "border-sky-100/75 border-l-[3px] border-l-sky-500/70 bg-sky-50/55 text-slate-700 dark:border-sky-900/40 dark:border-l-sky-500/65 dark:bg-sky-950/28 dark:text-slate-200"
+          }`}
           role="status"
         >
-          {statusMsg}
+          {registrationStatus.type === "error" ? (
+            <p>{registrationStatus.message}</p>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <p className="font-medium text-slate-800 dark:text-slate-100">
+                  Confirmed on Sepolia — links below point to the same on-chain
+                  activity.
+                </p>
+                <p className="mt-1 font-mono text-[13px] font-semibold text-sky-950 dark:text-sky-100">
+                  {registrationStatus.fullName}
+                </p>
+              </div>
+
+              <ul className="list-none space-y-2.5 pl-0 text-sm">
+                <li>
+                  <span className="text-slate-500 dark:text-slate-400">
+                    Registrar · subdomain{" "}
+                  </span>
+                  <a
+                    href={sepoliaEtherscanTxUrl(registrationStatus.subdomainTx)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-sky-800/95 underline decoration-sky-300/50 underline-offset-2 hover:text-sky-950 dark:text-sky-300 dark:hover:text-sky-200"
+                  >
+                    Etherscan
+                  </a>
+                  <span className="ml-1.5 font-mono text-xs text-slate-500 dark:text-slate-400">
+                    {shortenTxHash(registrationStatus.subdomainTx)}
+                  </span>
+                </li>
+                {registrationStatus.metadataTx ? (
+                  <li>
+                    <span className="text-slate-500 dark:text-slate-400">
+                      Public resolver · metadata (multicall){" "}
+                    </span>
+                    <a
+                      href={sepoliaEtherscanTxUrl(registrationStatus.metadataTx)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-sky-800/95 underline decoration-sky-300/50 underline-offset-2 hover:text-sky-950 dark:text-sky-300 dark:hover:text-sky-200"
+                    >
+                      Etherscan
+                    </a>
+                    <span className="ml-1.5 font-mono text-xs text-slate-500 dark:text-slate-400">
+                      {shortenTxHash(registrationStatus.metadataTx)}
+                    </span>
+                  </li>
+                ) : null}
+              </ul>
+
+              <div className="flex flex-wrap gap-x-6 gap-y-2 border-t border-sky-200/45 pt-3 text-sm dark:border-sky-800/40">
+                <a
+                  href={ensSepoliaAppNameUrl(registrationStatus.fullName)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-sky-800/95 underline decoration-sky-300/50 underline-offset-2 hover:text-sky-950 dark:text-sky-300 dark:hover:text-sky-200"
+                >
+                  Open in ENS App (Sepolia)
+                </a>
+                <a
+                  href={ensExplorerNameUrl(registrationStatus.fullName)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-sky-800/95 underline decoration-sky-300/50 underline-offset-2 hover:text-sky-950 dark:text-sky-300 dark:hover:text-sky-200"
+                >
+                  ENS Explorer (name)
+                </a>
+              </div>
+
+              {registrationStatus.metadataFailedNote ? (
+                <p className="border-t border-amber-200/70 pt-3 text-xs leading-relaxed text-amber-900 dark:border-amber-900/40 dark:text-amber-200/95">
+                  {registrationStatus.metadataFailedNote}
+                </p>
+              ) : null}
+            </div>
+          )}
         </div>
       ) : null}
     </div>
