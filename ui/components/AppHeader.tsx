@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ConnectKitButton } from "connectkit";
 import { useAccount } from "wagmi";
+import { ConnectKitButtonClient } from "@/components/ConnectKitButtonClient";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { useHasMounted } from "@/lib/useHasMounted";
 
 type EthereumLike = {
   request: (args: {
@@ -29,6 +30,7 @@ function shortenAddress(address: string, head = 6, tail = 4): string {
 }
 
 export function AppHeader() {
+  const hasMounted = useHasMounted();
   const { isConnected } = useAccount();
   const [address, setAddress] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -107,8 +109,8 @@ export function AppHeader() {
 
         <nav className="flex shrink-0 items-center gap-2 sm:gap-3">
           <ThemeToggle />
-          <ConnectKitButton />
-          {isConnected ? (
+          <ConnectKitButtonClient />
+          {hasMounted && isConnected ? (
             <Link
               href="/dashboard"
               className="group inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-slate-50/90 px-3 py-1.5 text-xs font-semibold tracking-tight text-slate-800 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-slate-600 dark:hover:bg-slate-800 sm:px-3.5 sm:py-2 sm:text-sm"

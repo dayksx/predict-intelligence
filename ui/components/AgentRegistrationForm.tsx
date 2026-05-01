@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ConnectKitButton } from "connectkit";
 import { waitForTransactionReceipt } from "viem/actions";
 import {
   useAccount,
@@ -29,6 +28,12 @@ import {
   type MarketplaceAgent,
   type MarketplaceAgentId,
 } from "@/lib/agentic-registrar";
+import { useHasMounted } from "@/lib/useHasMounted";
+
+function shortenAddress(addr: string, head = 6, tail = 4): string {
+  if (addr.length <= head + tail + 2) return addr;
+  return `${addr.slice(0, head)}…${addr.slice(-tail)}`;
+}
 
 function readExpiryFromGetData(data: unknown): bigint | undefined {
   if (data == null) return undefined;
@@ -41,11 +46,6 @@ function readExpiryFromGetData(data: unknown): bigint | undefined {
     return typeof v === "bigint" ? v : BigInt(String(v));
   }
   return undefined;
-}
-
-function shortenAddress(addr: string, head = 6, tail = 4): string {
-  if (addr.length <= head + tail + 2) return addr;
-  return `${addr.slice(0, head)}…${addr.slice(-tail)}`;
 }
 
 /** Empty string is valid (optional field). */
@@ -69,6 +69,7 @@ function contractorInitials(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
+/** Primary label for individual controls (compact, uppercase). */
 function FieldLabel({
   children,
   htmlFor,
@@ -79,20 +80,84 @@ function FieldLabel({
   return (
     <label
       htmlFor={htmlFor}
-      className="mb-2 block border-l-2 border-slate-300 pl-2.5 text-[11px] font-semibold tracking-[0.12em] text-slate-600 uppercase dark:border-slate-600 dark:text-slate-400"
+      className="mb-1.5 block text-[11px] font-semibold tracking-[0.08em] text-slate-500 uppercase dark:text-slate-400"
     >
       {children}
     </label>
   );
 }
 
+/** Step / section title — matches breadcrumb wording, sentence case. */
+function SectionTitle({
+  children,
+  as: Tag = "h2",
+}: {
+  children: React.ReactNode;
+  as?: "h2" | "h3";
+}) {
+  return (
+    <Tag className="mb-1 text-[15px] font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+      {children}
+    </Tag>
+  );
+}
+
+function HelperText({
+  children,
+  id,
+  className = "",
+}: {
+  children: React.ReactNode;
+  id?: string;
+  className?: string;
+}) {
+  return (
+    <p
+      id={id}
+      className={`text-xs leading-relaxed text-slate-500 dark:text-slate-400 ${className}`}
+    >
+      {children}
+    </p>
+  );
+}
+
+const formCardClass =
+  "rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-950 sm:p-6";
+
+function FormStepCard({
+  id,
+  className = "",
+  children,
+}: {
+  id: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      id={id}
+      className={`scroll-mt-28 ${formCardClass} ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Section titles: keep in sync with `REGISTRATION_STEPS` labels and form `FieldLabel`s */
+const REGISTRATION_SECTION_LABELS = {
+  focus: "Share your thesis",
+  agent: "Choose your agent",
+  delegate: "Amount to delegate",
+  claim: "Claim a name",
+  register: "Perceive · Reason · Act",
+} as const;
+
 const REGISTRATION_STEPS = [
-  { id: "step-overview", label: "Overview" },
-  { id: "step-focus", label: "Define focus" },
-  { id: "step-thesis", label: "Thesis" },
-  { id: "step-agent", label: "Choose agent" },
-  { id: "step-claim", label: "Claim name" },
-  { id: "step-register", label: "Register" },
+  { id: "step-focus", label: REGISTRATION_SECTION_LABELS.focus },
+  { id: "step-agent", label: REGISTRATION_SECTION_LABELS.agent },
+  { id: "step-delegate", label: REGISTRATION_SECTION_LABELS.delegate },
+  { id: "step-claim", label: REGISTRATION_SECTION_LABELS.claim },
+  { id: "step-register", label: REGISTRATION_SECTION_LABELS.register },
 ] as const;
 
 type RegistrationStepId = (typeof REGISTRATION_STEPS)[number]["id"];
@@ -103,13 +168,13 @@ function RegistrationStepsNav({
 }: {
   navClassName?: string;
 }) {
-  const [activeId, setActiveId] = useState<RegistrationStepId>("step-overview");
+  const [activeId, setActiveId] = useState<RegistrationStepId>("step-focus");
 
   useEffect(() => {
     const headerReserve = 72;
 
     function updateActive() {
-      let current: RegistrationStepId = "step-overview";
+      let current: RegistrationStepId = "step-focus";
       for (const { id } of REGISTRATION_STEPS) {
         const el = document.getElementById(id);
         if (!el) continue;
@@ -136,13 +201,16 @@ function RegistrationStepsNav({
           return (
             <li key={step.id} className="flex items-center gap-x-1.5">
               {i > 0 ? (
-                <span className="text-slate-300 dark:text-slate-600" aria-hidden>
-                  /
+                <span
+                  className="text-slate-300 select-none dark:text-slate-600"
+                  aria-hidden
+                >
+                  ·
                 </span>
               ) : null}
               <a
                 href={`#${step.id}`}
-                className={`rounded-md px-1.5 py-0.5 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 ${
+                className={`rounded-md px-1.5 py-1 leading-tight transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 ${
                   isActive
                     ? "bg-slate-200/90 text-slate-900 dark:bg-slate-700 dark:text-slate-100"
                     : "text-slate-500 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-200"
@@ -154,23 +222,13 @@ function RegistrationStepsNav({
             </li>
           );
         })}
-        <li className="flex items-center gap-x-1.5">
-          <span className="text-slate-300 dark:text-slate-600" aria-hidden>
-            /
-          </span>
-          <span className="text-slate-400 dark:text-slate-600">
-            Perceive · Reason · Act
-          </span>
-        </li>
       </ol>
-      <p className="mt-1.5 max-w-2xl text-[10px] leading-snug text-slate-400 dark:text-slate-600">
-        Post-registration execution loop (outside this form).
-      </p>
     </nav>
   );
 }
 
 export function AgentRegistrationForm() {
+  const hasMounted = useHasMounted();
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
   const { switchChainAsync } = useSwitchChain();
@@ -359,26 +417,42 @@ export function AgentRegistrationForm() {
 
   const selectedAgent = MARKETPLACE_AGENTS.find((a) => a.id === selectedAgentId);
 
-  const inputUnderline =
-    "w-full border-0 border-b border-slate-200 bg-transparent px-0 py-2.5 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-0 dark:border-slate-600 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-400";
+  const inputBase =
+    "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-0 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-400";
+
+  const submitDisabled =
+    !hasMounted ||
+    !isConnected ||
+    isSubmitting ||
+    parentExpiry === undefined;
+
+  const submitDisabledTitle = (() => {
+    if (!submitDisabled) return undefined;
+    if (!hasMounted) return "Loading wallet interface…";
+    if (!isConnected) return "Connect your wallet to register.";
+    if (parentExpiry === undefined) return "Loading contract data from Sepolia…";
+    if (isSubmitting) return "Waiting for wallet confirmation.";
+    return undefined;
+  })();
 
   return (
     <div className="w-full max-w-4xl">
-      <article className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm shadow-slate-900/[0.04] ring-1 ring-slate-900/[0.04] dark:border-slate-800 dark:bg-slate-950 dark:shadow-none dark:ring-white/[0.06]">
+      <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
         <header className="border-b border-slate-100 bg-slate-50/90 dark:border-slate-800 dark:bg-slate-900/40">
           <h1 className="sr-only">Registration</h1>
           <div className="flex flex-col gap-3 px-6 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
             <RegistrationStepsNav navClassName="min-w-0 flex-1 border-0 bg-transparent p-0 dark:bg-transparent" />
-            <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end sm:pt-px">
-              <div className="[&_button]:!rounded-lg [&_button]:!text-xs [&_button]:!font-medium">
-                <ConnectKitButton />
-              </div>
-              {isConnected && address ? (
+            <div className="flex shrink-0 flex-col items-stretch justify-center sm:items-end">
+              {!hasMounted ? (
+                <p className="text-right text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                  Connect to continue
+                </p>
+              ) : isConnected && address ? (
                 <p className="text-[11px] text-right whitespace-nowrap">
-                  <span className="text-slate-500 dark:text-slate-500">
-                    Owner ·{" "}
+                  <span className="font-medium text-slate-500 dark:text-slate-500">
+                    Owner:{" "}
                   </span>
-                  <span className="font-mono font-semibold text-slate-800 dark:text-slate-100">
+                  <span className="font-mono font-semibold tabular-nums text-slate-800 dark:text-slate-100">
                     {shortenAddress(address)}
                   </span>
                 </p>
@@ -392,44 +466,49 @@ export function AgentRegistrationForm() {
         </header>
 
         <form onSubmit={onSubmit} className="px-6 py-8">
-          <div className="space-y-10">
-            <fieldset
-              id="step-overview"
-              className="scroll-mt-28"
-            >
-              <legend className="sr-only">Overview</legend>
-              <FieldLabel>Overview</FieldLabel>
-              <p className="max-w-2xl text-xs leading-relaxed text-slate-500 dark:text-slate-500">
-                Define your focus and choose an agent suited to the markets you
-                care about—prediction markets, crypto, and beyond. Claim{" "}
-                <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">
-                  name.agentic.eth
-                </span>{" "}
-                on Sepolia (first tx), then confirm writing your answers as{" "}
-                <strong className="font-medium text-slate-600 dark:text-slate-400">
-                  ENS text records
-                </strong>{" "}
-                on the public resolver (second tx). Perceive → reason → act is
-                how execution unfolds afterward. Wallet required.
-              </p>
-            </fieldset>
+          <div className="space-y-8">
+            {/* Focus + thesis */}
+            <FormStepCard id="step-focus">
+              <fieldset className="min-w-0 space-y-6 border-0 p-0">
+                <legend className="sr-only">
+                  {REGISTRATION_SECTION_LABELS.focus}
+                </legend>
 
-            {/* Interests */}
-            <fieldset id="step-focus" className="scroll-mt-28">
-              <legend className="sr-only">Define focus</legend>
-              <FieldLabel>Define focus</FieldLabel>
-              <p
-                id="areas-interest-hint"
-                className="mb-3 text-xs text-slate-500 dark:text-slate-500"
-              >
-                Optional themes for your thesis · saved as ENS text when you
-                confirm metadata
-              </p>
-              <div
-                className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-slate-100 pb-3 dark:border-slate-800"
-                role="group"
-                aria-describedby="areas-interest-hint"
-              >
+                <div className="space-y-2">
+                  <SectionTitle>{REGISTRATION_SECTION_LABELS.focus}</SectionTitle>
+                  <HelperText className="max-w-2xl">
+                    Here you shape your public agent profile:{" "}
+                    <strong className="font-medium text-slate-700 dark:text-slate-300">
+                      Focus
+                    </strong>{" "}
+                    tags the themes you care about;{" "}
+                    <strong className="font-medium text-slate-700 dark:text-slate-300">
+                      Thesis
+                    </strong>{" "}
+                    is where you spell out your view, what you monitor, and what
+                    would prove you wrong. Together they don’t create your
+                    subdomain—that happens when you claim a name later. After
+                    registration succeeds, a separate step writes these fields (and
+                    your later choices) into ENS text records on Sepolia so they’re
+                    readable on-chain with your{" "}
+                    <span className="font-mono text-[13px] text-slate-700 dark:text-slate-300">
+                      *.agentic.eth
+                    </span>{" "}
+                    name.
+                  </HelperText>
+                </div>
+
+                <div className="space-y-6">
+                  <div>
+                    <FieldLabel>Focus</FieldLabel>
+                    <HelperText id="areas-interest-hint" className="mb-3">
+                      Add themes that describe what you track (optional).
+                    </HelperText>
+                    <div
+                      className="flex flex-wrap items-center gap-x-2 gap-y-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-950"
+                      role="group"
+                      aria-describedby="areas-interest-hint"
+                    >
                 <div className="relative shrink-0">
                   <select
                     aria-label="Add focus theme"
@@ -440,7 +519,7 @@ export function AgentRegistrationForm() {
                       setSelectedInterests((prev) => [...prev, v]);
                       e.target.value = "";
                     }}
-                    className="h-8 min-w-[8.5rem] cursor-pointer appearance-none rounded-md border border-slate-200 bg-slate-50/80 py-1 pr-7 pl-2.5 text-xs text-slate-800 outline-none transition hover:border-slate-300 hover:bg-slate-100/80 focus-visible:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-400/15 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-900 dark:focus-visible:ring-slate-500/20"
+                    className="h-8 min-w-[8.5rem] cursor-pointer appearance-none rounded-md border border-slate-200 bg-slate-50/80 py-1 pr-7 pl-2.5 text-xs text-slate-800 outline-none transition hover:border-slate-300 hover:bg-slate-100/80 focus-visible:border-slate-400 focus-visible:ring-0 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-900"
                   >
                     <option value="">Add topic…</option>
                     {INTEREST_TOPICS.filter(
@@ -484,48 +563,47 @@ export function AgentRegistrationForm() {
                     );
                   })}
                   {selectedInterests.length === 0 ? (
-                    <li className="text-xs text-slate-400 italic dark:text-slate-600">
-                      None selected
+                    <li className="text-xs text-slate-400 not-italic dark:text-slate-600">
+                      No themes yet
                     </li>
                   ) : null}
                 </ul>
               </div>
-            </fieldset>
+                  </div>
 
-            <fieldset id="step-thesis" className="scroll-mt-28">
-              <legend className="sr-only">Thesis</legend>
-              <FieldLabel htmlFor="thesis-prompt">Thesis prompt</FieldLabel>
-              <p
-                id="thesis-prompt-hint"
-                className="mb-3 max-w-2xl text-xs leading-relaxed text-slate-500 dark:text-slate-500"
-              >
-                Optional · spell out your thesis and how you analyse markets
-                (drivers, evidence, risks). Written as ENS text when you confirm
-                metadata.
-              </p>
-              <textarea
-                id="thesis-prompt"
-                name="thesisPrompt"
-                rows={5}
-                maxLength={4000}
-                placeholder="e.g. Core view, what you monitor, what would confirm or invalidate your thesis…"
-                value={thesisPrompt}
-                onChange={(e) => setThesisPrompt(e.target.value)}
-                aria-describedby="thesis-prompt-hint"
-                className="w-full max-w-2xl resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm leading-relaxed text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-400/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-500 dark:focus:ring-slate-500/20"
-              />
-            </fieldset>
+                  <div>
+                    <FieldLabel htmlFor="thesis-prompt">Thesis</FieldLabel>
+                    <HelperText id="thesis-prompt-hint" className="mb-3">
+                      Your view, what you watch, and what would change your mind
+                      (optional).
+                    </HelperText>
+                    <textarea
+                      id="thesis-prompt"
+                      name="thesisPrompt"
+                      rows={5}
+                      maxLength={4000}
+                      placeholder="Core thesis, signals you track, upside and downside risks…"
+                      value={thesisPrompt}
+                      onChange={(e) => setThesisPrompt(e.target.value)}
+                      aria-describedby="thesis-prompt-hint"
+                      className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm leading-relaxed text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-0 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-400"
+                    />
+                  </div>
+                </div>
+              </fieldset>
+            </FormStepCard>
 
             {/* Agents */}
-            <fieldset id="step-agent" className="scroll-mt-28 space-y-3">
-              <FieldLabel>Choose agent</FieldLabel>
-              <p className="mb-1 max-w-2xl text-xs leading-relaxed text-slate-500 dark:text-slate-500">
-                Pick a profile aligned with how you trade or forecast—prediction
-                markets, crypto, and other contexts. Access fee (ETH) is per
-                agent; add how much you intend to delegate in ETH below. Agent
-                choice and fees are reflected in ENS text records (metadata tx),
-                not in the subdomain registration call.
-              </p>
+            <FormStepCard id="step-agent">
+              <fieldset className="min-w-0 space-y-4 border-0 p-0">
+              <legend className="sr-only">
+                {REGISTRATION_SECTION_LABELS.agent}
+              </legend>
+              <SectionTitle>{REGISTRATION_SECTION_LABELS.agent}</SectionTitle>
+              <HelperText className="max-w-2xl">
+                Each profile includes an access fee (shown in ETH). Your choice
+                is saved with the metadata transaction, not the subdomain call.
+              </HelperText>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {MARKETPLACE_AGENTS.map((agent: MarketplaceAgent) => {
                   const selected = agent.id === selectedAgentId;
@@ -535,10 +613,10 @@ export function AgentRegistrationForm() {
                       type="button"
                       onClick={() => setSelectedAgentId(agent.id)}
                       aria-pressed={selected}
-                      className={`flex flex-col rounded-2xl border p-5 text-left transition-all ${
+                      className={`flex flex-col rounded-xl border p-5 text-left transition-colors ${
                         selected
-                          ? "border-slate-400 bg-slate-50/90 shadow-sm ring-1 ring-slate-900/[0.06] dark:border-slate-500 dark:bg-slate-900/60 dark:ring-white/[0.08]"
-                          : "border-slate-200/90 bg-white hover:border-slate-300 hover:bg-slate-50/50 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-700 dark:hover:bg-slate-900/40"
+                          ? "border-slate-400 bg-slate-50 dark:border-slate-500 dark:bg-slate-900/70"
+                          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/80 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-700 dark:hover:bg-slate-900/40"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -591,50 +669,53 @@ export function AgentRegistrationForm() {
                       </div>
                       {selected ? (
                         <p className="mt-4 text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                          Chosen agent
+                          Selected
                         </p>
                       ) : (
                         <p className="mt-4 text-[11px] text-slate-400 dark:text-slate-600">
-                          Tap to choose
+                          Select
                         </p>
                       )}
                     </button>
                   );
                 })}
               </div>
+              </fieldset>
+            </FormStepCard>
 
-              <div className="mt-6 max-w-md space-y-2 border-t border-slate-100 pt-6 dark:border-slate-800">
-                <FieldLabel htmlFor="delegation-eth">
-                  Amount to delegate (ETH)
-                </FieldLabel>
-                <p
-                  id="delegation-eth-hint"
-                  className="text-xs leading-relaxed text-slate-500 dark:text-slate-500"
-                >
-                  Optional · intended delegation for this agent&apos;s execution.
-                  Stored as ENS text when you confirm metadata.
-                </p>
-                <div className="flex max-w-[14rem] items-center gap-2">
-                  <input
-                    id="delegation-eth"
-                    name="delegationEth"
-                    type="text"
-                    inputMode="decimal"
-                    autoComplete="off"
-                    placeholder="0.0"
-                    value={delegationEth}
-                    onChange={(e) => setDelegationEth(e.target.value)}
-                    aria-describedby="delegation-eth-hint"
-                    className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm tabular-nums text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-400/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-slate-500 dark:focus:ring-slate-500/20"
-                  />
-                  <span className="shrink-0 text-sm font-semibold text-slate-600 dark:text-slate-400">
-                    ETH
-                  </span>
-                </div>
+            <FormStepCard id="step-delegate">
+              <fieldset className="min-w-0 space-y-4 border-0 p-0">
+              <legend className="sr-only">
+                {REGISTRATION_SECTION_LABELS.delegate}
+              </legend>
+              <SectionTitle as="h3">
+                {REGISTRATION_SECTION_LABELS.delegate}
+              </SectionTitle>
+              <HelperText id="delegation-eth-hint">
+                Optional intent for how much you plan to delegate—stored with
+                metadata (not settled in this flow).
+              </HelperText>
+              <FieldLabel htmlFor="delegation-eth">Amount</FieldLabel>
+              <div className="flex max-w-[14rem] items-center gap-2">
+                <input
+                  id="delegation-eth"
+                  name="delegationEth"
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="0.0"
+                  value={delegationEth}
+                  onChange={(e) => setDelegationEth(e.target.value)}
+                  aria-describedby="delegation-eth-hint"
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm tabular-nums text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-0 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-slate-400"
+                />
+                <span className="shrink-0 text-sm font-semibold text-slate-600 dark:text-slate-400">
+                  ETH
+                </span>
               </div>
 
               {selectedAgent ? (
-                <p className="rounded-lg border border-slate-200/90 bg-slate-50/70 px-3 py-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-400">
+                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
                   Agent{" "}
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
                     {selectedAgent.name}
@@ -656,39 +737,50 @@ export function AgentRegistrationForm() {
                   ) : null}{" "}
                   —{" "}
                   <span className="text-slate-500 dark:text-slate-500">
-                    settle separately from the ENS tx.
+                    Paid access is separate from the ENS transactions.
                   </span>
                 </p>
               ) : null}
-            </fieldset>
+              </fieldset>
+            </FormStepCard>
 
-            {/* ENS label */}
-            <fieldset id="step-claim" className="scroll-mt-28">
-              <FieldLabel htmlFor="ens-label">Claim name</FieldLabel>
-              <div className="flex flex-wrap items-end gap-2 sm:items-center">
+            <FormStepCard id="step-claim">
+              <fieldset className="min-w-0 space-y-3 border-0 p-0">
+              <legend className="sr-only">
+                {REGISTRATION_SECTION_LABELS.claim}
+              </legend>
+              <SectionTitle as="h3">
+                {REGISTRATION_SECTION_LABELS.claim}
+              </SectionTitle>
+              <HelperText>
+                3–63 characters: lowercase letters, digits, and hyphens only.
+              </HelperText>
+              <FieldLabel htmlFor="ens-label">Subdomain</FieldLabel>
+              <div className="flex min-w-0 max-w-md flex-wrap items-center gap-2 sm:flex-nowrap">
                 <input
                   id="ens-label"
+                  name="ensLabel"
                   type="text"
                   autoComplete="off"
                   placeholder="myagent"
                   value={labelInput}
                   onChange={(e) => setLabelInput(e.target.value)}
-                  className={`${inputUnderline} min-w-[10rem] flex-1 sm:max-w-[14rem]`}
+                  className={`${inputBase} min-w-0 flex-1 sm:min-w-[12rem]`}
                 />
-                <span className="pb-2.5 font-mono text-sm font-semibold text-slate-600 dark:text-slate-400">
+                <span className="shrink-0 font-mono text-sm font-semibold text-slate-600 tabular-nums dark:text-slate-400">
                   .agentic.eth
                 </span>
               </div>
-            </fieldset>
+              </fieldset>
+            </FormStepCard>
 
-            {/* Technical */}
-            <details className="group text-xs">
-              <summary className="cursor-pointer list-none text-slate-500 transition hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-300 [&::-webkit-details-marker]:hidden">
+            <details className="group rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs dark:border-slate-700 dark:bg-slate-900">
+              <summary className="cursor-pointer list-none font-medium text-slate-600 transition hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 [&::-webkit-details-marker]:hidden">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="text-[10px] transition-transform group-open:rotate-90">
                     ▸
                   </span>
-                  Contract · expiry · ENS text keys
+                  Technical details (contract, expiry, metadata keys)
                 </span>
               </summary>
               <div className="mt-3 space-y-3 border-l-2 border-slate-200 pl-3 font-mono text-[11px] leading-relaxed text-slate-500 dark:border-slate-700 dark:text-slate-500">
@@ -714,22 +806,30 @@ export function AgentRegistrationForm() {
               </div>
             </details>
 
-            {/* Submit */}
-            <div id="step-register" className="scroll-mt-28 pt-2">
-              <button
-                type="submit"
-                disabled={
-                  !isConnected ||
-                  isSubmitting ||
-                  parentExpiry === undefined
-                }
-                className="w-full rounded-xl bg-slate-900 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:disabled:opacity-35"
-              >
-                {isSubmitting
-                  ? "Confirm in wallet…"
-                  : "Register on Sepolia · write metadata"}
-              </button>
-            </div>
+            <FormStepCard
+              id="step-register"
+              className="border-slate-300 bg-slate-50 dark:border-slate-600 dark:bg-slate-900"
+            >
+              <div className="space-y-4">
+                <SectionTitle as="h3">
+                  {REGISTRATION_SECTION_LABELS.register}
+                </SectionTitle>
+                <HelperText>
+                  Submits two on-chain steps on Sepolia: subdomain registration,
+                  then metadata. Connect your wallet first.
+                </HelperText>
+                <button
+                  type="submit"
+                  disabled={submitDisabled}
+                  title={submitDisabledTitle}
+                  className="w-full rounded-lg border border-slate-900 bg-slate-900 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:disabled:opacity-35"
+                >
+                  {isSubmitting
+                    ? "Confirm in wallet…"
+                    : "Register on Sepolia · write metadata"}
+                </button>
+              </div>
+            </FormStepCard>
           </div>
         </form>
       </article>
