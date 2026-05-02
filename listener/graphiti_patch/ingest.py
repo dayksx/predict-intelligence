@@ -69,6 +69,7 @@ class AsyncWorker:
 
 
 async_worker = AsyncWorker()
+_worker_started = False
 
 
 @asynccontextmanager
@@ -81,8 +82,19 @@ async def lifespan(_: FastAPI):
 router = APIRouter(lifespan=lifespan)
 
 
+async def _ensure_worker_running() -> None:
+    """Lazy-start the worker if the router lifespan didn't fire (older FastAPI)."""
+    global _worker_started
+    if not _worker_started:
+        await async_worker.start()
+        _worker_started = True
+        logger.info('[ingest] async worker started (lazy)')
+
+
 @router.post('/messages', status_code=status.HTTP_202_ACCEPTED)
 async def add_messages(request: AddMessagesRequest):
+    await _ensure_worker_running()
+
     async def add_messages_task(m: Message):
         # Fresh client per task — avoids using a closed request-scoped client
         graphiti = _make_graphiti()
