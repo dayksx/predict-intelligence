@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Annotated
 
 from fastapi import Depends, HTTPException
@@ -87,6 +88,11 @@ async def get_graphiti(settings: ZepEnvDep):
         embedder=embedder,
     )
 
+    # Override database name — Aura Free instances may use a non-default name
+    neo4j_database = os.environ.get('NEO4J_DATABASE', 'neo4j')
+    if hasattr(client, 'driver') and hasattr(client.driver, 'database'):
+        client.driver.database = neo4j_database
+
     if settings.openai_base_url is not None:
         client.llm_client.config.base_url = settings.openai_base_url
     if settings.openai_api_key is not None:
@@ -106,6 +112,10 @@ async def initialize_graphiti(settings: ZepEnvDep):
         user=settings.neo4j_user,
         password=settings.neo4j_password,
     )
+    # Override database name — Aura Free instances may use a non-default name
+    neo4j_database = os.environ.get('NEO4J_DATABASE', 'neo4j')
+    if hasattr(client, 'driver') and hasattr(client.driver, 'database'):
+        client.driver.database = neo4j_database
     await client.build_indices_and_constraints()
 
 
