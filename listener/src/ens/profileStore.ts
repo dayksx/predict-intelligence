@@ -3,9 +3,10 @@ import { existsSync } from "fs";
 import { resolve, join } from "path";
 import { postProfile } from "../apiClient.js";
 
-const PROFILES_DIR = process.env.PROFILES_DIR ?? resolve("data/profiles");
-const STATE_FILE = resolve("data/ens_last_polled.txt");
-const PENDING_FILE = resolve("data/ens_pending.json");
+const DATA_DIR = process.env.ENS_DATA_DIR ?? resolve("data");
+const PROFILES_DIR = process.env.PROFILES_DIR ?? `${DATA_DIR}/profiles`;
+const STATE_FILE = `${DATA_DIR}/ens_last_polled.txt`;
+const PENDING_FILE = `${DATA_DIR}/ens_pending.json`;
 
 /** Saves a TradingStrategy to data/profiles/{ensName}.json and api/. */
 export async function saveProfile(strategy: object & { ensName: string }): Promise<void> {
@@ -36,7 +37,7 @@ export async function readLastPolled(): Promise<number> {
 
 /** Persists the current unix timestamp as the last-polled marker. */
 export async function writeLastPolled(timestampSeconds: number): Promise<void> {
-  await mkdir(resolve("data"), { recursive: true });
+  await mkdir(DATA_DIR, { recursive: true });
   await writeFile(STATE_FILE, String(timestampSeconds));
 }
 

@@ -1,0 +1,8 @@
+FROM zepai/graphiti:latest
+
+# Patch the two files we override locally
+COPY listener/graphiti_patch/zep_graphiti.py /app/graph_service/zep_graphiti.py
+COPY listener/graphiti_patch/ingest.py       /app/graph_service/routers/ingest.py
+
+EXPOSE 8000
+CMD ["python", "-m", "uvicorn", "graph_service.main:app", "--host", "0.0.0.0", "--port", "8000"]
