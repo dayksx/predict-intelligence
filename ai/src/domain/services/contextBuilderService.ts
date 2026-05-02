@@ -1,21 +1,34 @@
-import type { UserPrefs } from "../entities/userPrefs.js";
+import type { TradingStrategy } from "../entities/strategy.js";
 import type { EnrichedPosition } from "../entities/position.js";
 import type { MarketFact } from "../entities/market.js";
 
-export function buildSystemPrompt(prefs: UserPrefs): string {
-  const domains = prefs.preferred_domains.length
-    ? `\n- Preferred domains: ${prefs.preferred_domains.join(", ")}`
+/** Builds the system prompt injected into the LLM, personalised per user's ENS strategy. */
+export function buildSystemPrompt(strategy: TradingStrategy): string {
+  const swapNote = strategy.actions.swap
+    ? "\n- Swaps: enabled (use swap action for token-to-token exchanges)"
+    : "\n- Swaps: disabled for this profile";
+
+  const thesisSection = strategy.thesisPrompt
+    ? `\n## Your Investment Thesis\n${strategy.thesisPrompt}`
     : "";
+
   return `You are an autonomous prediction market trading agent.
 
-Your role is to analyse the user's open positions and identify new trading opportunities on Polymarket.
+## Agent Profile
+${strategy.agentName} — ${strategy.focusDomain} markets
+Wallet: ${strategy.walletAddress || "not set"}${thesisSection}
 
-## User Preferences
-- Take profit at: ${(prefs.take_profit_pct * 100).toFixed(0)}% gain
-- Stop loss at: ${(prefs.stop_loss_pct * 100).toFixed(0)}% loss
-- Max position size: $${prefs.max_position_usdc} USDC
-- Max total exposure: ${(prefs.max_total_exposure_pct * 100).toFixed(0)}% of wallet
-- Confidence threshold: ${(prefs.confidence_threshold * 100).toFixed(0)}% minimum${domains}
+## Focus Topics
+${strategy.graphitiSearchTopics.join(", ")}
+
+## Trading Parameters
+- Take profit at: ${(strategy.take_profit_pct * 100).toFixed(0)}% gain
+- Stop loss at: ${(strategy.stop_loss_pct * 100).toFixed(0)}% loss
+- Max position size: $${strategy.max_position_usdc.toFixed(2)} USDC
+- Max total exposure: ${(strategy.max_total_exposure_pct * 100).toFixed(0)}% of wallet
+- Confidence threshold: ${(strategy.confidence_threshold * 100).toFixed(0)}% minimum
+- Max days open: ${strategy.max_days_open}
+- Prediction markets: enabled${swapNote}
 
 ## Your Task
 Return a JSON object with a "decisions" array. For each decision include:
@@ -32,10 +45,10 @@ Return a JSON object with a "decisions" array. For each decision include:
 ## Decision Rules
 1. For each open position: decide "close_position" (take profit/stop loss/expired) or "hold_open"
    - Set positionId to the positionId shown, marketId to the marketId shown
-2. For new market opportunities: decide "trade" (buy YES/NO) or "hold" (pass)
+2. For new market opportunities aligned with your thesis: decide "trade" (buy YES/NO) or "hold" (pass)
    - Set marketId to the market_id value from the Market Intelligence section (e.g. "540816")
-3. Only recommend new "trade" if confidence >= ${prefs.confidence_threshold}
-4. Limit to ${prefs.max_position_usdc} USDC per new position`;
+3. Only recommend new "trade" if confidence >= ${strategy.confidence_threshold}
+4. Limit to $${strategy.max_position_usdc.toFixed(2)} USDC per new position`;
 }
 
 export function buildUserMessage(
@@ -51,7 +64,6 @@ export function buildUserMessage(
         p.unrealized_pnl_usdc !== null
           ? ` | PnL: ${p.unrealized_pnl_usdc >= 0 ? "+" : ""}$${p.unrealized_pnl_usdc.toFixed(2)}`
           : "";
-      // Show position.id for positionId and market_id for marketId so LLM uses the right values
       return `- positionId:${p.id} marketId:${p.market_id} | ${p.market_question} | ${p.direction} @ $${p.entry_price.toFixed(4)} | $${p.size_usdc}${price}${pnl} | ${p.days_held}d held`;
     });
     sections.push(`## Open Positions\n${rows.join("\n")}`);

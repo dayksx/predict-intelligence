@@ -1,17 +1,20 @@
 import { v4 as uuidv4 } from "uuid";
-import type { IUserPrefsRepo } from "../../ports/outbound/IUserPrefsRepo.js";
 import type { IPositionStore } from "../../ports/outbound/IPositionStore.js";
 import type { AgentState } from "../agentState.js";
 import { enrichPosition } from "../../domain/entities/position.js";
 
-/** Loads user preferences and open positions, enriches positions with days_held. */
-export function makeIngestNode(userPrefsRepo: IUserPrefsRepo, positionStore: IPositionStore) {
-  return async function ingestNode(_state: AgentState): Promise<Partial<AgentState>> {
-    const [userPrefs, rawPositions] = await Promise.all([
-      userPrefsRepo.loadPrefs(),
-      positionStore.loadOpen(),
-    ]);
+/**
+ * Loads open positions for the user identified by state.strategy.
+ * Strategy must already be set in state (injected by the scheduler or WorkflowRunner).
+ */
+export function makeIngestNode(positionStore: IPositionStore) {
+  return async function ingestNode(state: AgentState): Promise<Partial<AgentState>> {
+    if (!state.strategy) throw new Error("ingestNode: strategy missing — must be set in initial state");
+
+    const rawPositions = await positionStore.loadOpen();
     const openPositions = rawPositions.map((p) => enrichPosition(p));
-    return { runId: uuidv4(), userPrefs, openPositions };
+
+    console.log(`[ingest] user:${state.strategy.ensName} | ${openPositions.length} open position(s)`);
+    return { runId: uuidv4(), openPositions };
   };
 }

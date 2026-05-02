@@ -7,7 +7,7 @@ import type { Position } from "../../domain/entities/position.js";
 /** Persists new/closed positions and writes the final audit log entry. */
 export function makeRecordNode(positionStore: IPositionStore, auditLogger: IAuditLogger) {
   return async function recordNode(state: AgentState): Promise<Partial<AgentState>> {
-    const prefs = state.userPrefs!;
+    const strategy = state.strategy!;
     const now = new Date().toISOString();
 
     for (const result of state.executionResults) {
@@ -21,11 +21,11 @@ export function makeRecordNode(positionStore: IPositionStore, auditLogger: IAudi
           market_id: decision.marketId,
           market_question: decision.marketId,
           direction: decision.direction ?? "YES",
-          size_usdc: decision.sizeUsdc ?? prefs.max_position_usdc,
+          size_usdc: decision.sizeUsdc ?? strategy.max_position_usdc,
           entry_price: 0.5,
           entry_time: now,
           status: "open",
-          dry_run: prefs.dry_run,
+          dry_run: strategy.dry_run,
         };
         await positionStore.savePosition(position);
       } else if (decision.action === "close_position" && decision.positionId) {
@@ -40,10 +40,10 @@ export function makeRecordNode(positionStore: IPositionStore, auditLogger: IAudi
 
     const opened = state.executionResults.filter((r) => r.action === "trade" && r.success).length;
     const closed = state.executionResults.filter((r) => r.action === "close_position" && r.success).length;
-    const mode = prefs.dry_run ? " (dry run)" : "";
+    const mode = strategy.dry_run ? " (dry run)" : "";
 
     const summary = [
-      `Agent run complete${mode}.`,
+      `Agent run complete${mode} for ${strategy.ensName}.`,
       opened > 0 ? `Opened ${opened} new position(s).` : "",
       closed > 0 ? `Closed ${closed} position(s).` : "",
       state.validatedDecisions.length === 0
@@ -57,7 +57,7 @@ export function makeRecordNode(positionStore: IPositionStore, auditLogger: IAudi
       timestamp: now,
       runId: state.runId,
       event: "run_complete",
-      data: { decisions: state.validatedDecisions, results: state.executionResults, summary },
+      data: { user: strategy.ensName, decisions: state.validatedDecisions, results: state.executionResults, summary },
     });
 
     console.log(`[record] ${summary}`);

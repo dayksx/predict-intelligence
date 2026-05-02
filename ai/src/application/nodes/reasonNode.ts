@@ -18,7 +18,6 @@ const DecisionOutputZ = z.object({
       sizeUsdc: z.number().nullable().describe("Position size in USDC, null if not applicable"),
       tokenIn: z.string().nullable().describe("Token to swap from, null if not a swap"),
       tokenOut: z.string().nullable().describe("Token to swap to, null if not a swap"),
-      // CLOB fields — LLM populates these from market intelligence when available
       clobTokenId: z.string().nullable().default(null).describe("Polymarket CLOB token ID for the outcome, null if unknown"),
       negRisk: z.boolean().nullable().default(null).describe("true if the market uses the NegRiskAdapter, null if unknown"),
       yesPrice: z.number().nullable().default(null).describe("Current YES token price 0-1, null if unknown"),
@@ -31,7 +30,8 @@ const DecisionOutputZ = z.object({
   ),
 });
 
-/** Calls the LLM with structured output to produce a list of trading decisions. */
+/** Calls the LLM with structured output to produce a list of trading decisions.
+ *  The system prompt is personalised from the user's TradingStrategy. */
 export function makeReasonNode() {
   const llm = new ChatOpenAI({
     modelName: process.env.LITELLM_MODEL ?? "gpt-4o-mini",
@@ -41,14 +41,13 @@ export function makeReasonNode() {
   }).withStructuredOutput(DecisionOutputZ);
 
   return async function reasonNode(state: AgentState): Promise<Partial<AgentState>> {
-    if (!state.userPrefs) throw new Error("reasonNode: userPrefs missing — ingestNode must run first");
+    if (!state.strategy) throw new Error("reasonNode: strategy missing — ingestNode must run first");
 
     const result = await llm.invoke([
-      new SystemMessage(buildSystemPrompt(state.userPrefs)),
+      new SystemMessage(buildSystemPrompt(state.strategy)),
       new HumanMessage(buildUserMessage(state.openPositions, state.marketFacts)),
     ]);
 
-    // Parse through DecisionZ to apply defaults and get the correct Decision[] type
     return { decisions: result.decisions.map((d) => DecisionZ.parse(d)) };
   };
 }

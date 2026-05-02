@@ -1,7 +1,6 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 import { AgentStateAnnotation } from "./agentState.js";
 import type { IMarketSearch } from "../ports/outbound/IMarketSearch.js";
-import type { IUserPrefsRepo } from "../ports/outbound/IUserPrefsRepo.js";
 import type { IPositionStore } from "../ports/outbound/IPositionStore.js";
 import type { ITradeExecutor } from "../ports/outbound/ITradeExecutor.js";
 import type { ISwapExecutor } from "../ports/outbound/ISwapExecutor.js";
@@ -18,30 +17,29 @@ import { makeRecordNode } from "./nodes/recordNode.js";
 
 export interface WorkflowDeps {
   marketSearch: IMarketSearch;
-  userPrefsRepo: IUserPrefsRepo;
   positionStore: IPositionStore;
   tradeExecutor: ITradeExecutor;
   swapExecutor: ISwapExecutor;
   walletService: IWalletService;
   auditLogger: IAuditLogger;
   marketRegistry: IMarketRegistry;
-  walletAddress: string;
 }
 
 /**
  * Assembles the full LangGraph pipeline from injected port implementations.
- * Each node is a pure factory function — no framework coupling inside nodes.
+ * Strategy is passed via initial state — not a constructor dependency — so the
+ * same workflow factory can be called per-user with different strategy objects.
  *
  * Pipeline: ingest → retrieve → reason → validate → preflight → act → record
  */
 export function createWorkflow(deps: WorkflowDeps) {
   return new StateGraph(AgentStateAnnotation)
-    .addNode("ingest", makeIngestNode(deps.userPrefsRepo, deps.positionStore))
+    .addNode("ingest", makeIngestNode(deps.positionStore))
     .addNode("retrieve", makeRetrieveNode(deps.marketSearch))
     .addNode("reason", makeReasonNode())
     .addNode("validate", makeValidateNode())
     .addNode("preflight", makePreflightNode(deps.walletService, deps.auditLogger))
-    .addNode("act", makeActNode(deps.tradeExecutor, deps.swapExecutor, deps.auditLogger, deps.marketRegistry, deps.walletAddress))
+    .addNode("act", makeActNode(deps.tradeExecutor, deps.swapExecutor, deps.auditLogger, deps.marketRegistry))
     .addNode("record", makeRecordNode(deps.positionStore, deps.auditLogger))
     .addEdge(START, "ingest")
     .addEdge("ingest", "retrieve")

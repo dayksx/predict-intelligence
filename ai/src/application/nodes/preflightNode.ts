@@ -7,14 +7,14 @@ import { applyPortfolioGuards } from "../../domain/services/portfolioGuardServic
  *  In dry_run mode, skips balance checks and passes all validated decisions through. */
 export function makePreflightNode(walletService: IWalletService, auditLogger: IAuditLogger) {
   return async function preflightNode(state: AgentState): Promise<Partial<AgentState>> {
-    const prefs = state.userPrefs!;
+    const strategy = state.strategy!;
 
-    if (prefs.dry_run) {
+    if (strategy.dry_run) {
       await auditLogger.writeLog({
         timestamp: new Date().toISOString(),
         runId: state.runId,
         event: "preflight_dry_run",
-        data: { decisions: state.validatedDecisions.length },
+        data: { user: strategy.ensName, decisions: state.validatedDecisions.length },
       });
       return {};
     }
@@ -23,9 +23,9 @@ export function makePreflightNode(walletService: IWalletService, auditLogger: IA
     const { allowed, blocked } = applyPortfolioGuards(
       state.validatedDecisions,
       balances,
-      prefs.max_position_usdc,
-      prefs.max_total_exposure_pct,
-      prefs.gas_reserve_eth,
+      strategy.max_position_usdc,
+      strategy.max_total_exposure_pct,
+      strategy.gas_reserve_eth,
     );
 
     for (const { decision, reason } of blocked) {
@@ -34,7 +34,7 @@ export function makePreflightNode(walletService: IWalletService, auditLogger: IA
         timestamp: new Date().toISOString(),
         runId: state.runId,
         event: "decision_blocked",
-        data: { decision, reason },
+        data: { user: strategy.ensName, decision, reason },
       });
     }
 
