@@ -16,6 +16,7 @@
     "dotenv": "^16.4.0",
     "express": "^5.2.1",
     "uuid": "^14.0.0",
+    "viem": "^2.48.8",
     "zod": "^3.25.76"
   },
   "devDependencies": {

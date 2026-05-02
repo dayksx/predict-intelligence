@@ -10,6 +10,7 @@ import { ApiAuditLogger } from "../adapters/outbound/ApiAuditLogger.js";
 import { StubWalletService } from "../adapters/outbound/StubWalletService.js";
 import { StubTradeExecutor } from "../adapters/outbound/StubTradeExecutor.js";
 import { StubSwapExecutor } from "../adapters/outbound/StubSwapExecutor.js";
+import { UniswapSwapExecutor } from "../adapters/outbound/UniswapSwapExecutor.js";
 import { createWorkflow } from "../application/graph.js";
 import { WorkflowRunner } from "../adapters/inbound/WorkflowRunner.js";
 import { createA2AServer } from "../adapters/inbound/a2a.js";
@@ -51,7 +52,18 @@ export function buildContainer(): Container {
   const marketRegistry = new JsonFileMarketRegistry(registryFile);
   const walletService  = new StubWalletService();
   const tradeExecutor  = new StubTradeExecutor();
-  const swapExecutor   = new StubSwapExecutor();
+
+  // Use the real Uniswap Trading API when UNISWAP_API_KEY is configured;
+  // fall back to the stub so the rest of the workflow is never blocked.
+  const swapExecutor = process.env.UNISWAP_API_KEY
+    ? new UniswapSwapExecutor()
+    : new StubSwapExecutor();
+
+  if (process.env.UNISWAP_API_KEY) {
+    console.log("[container] swap executor → Uniswap Trading API (Sepolia)");
+  } else {
+    console.log("[container] swap executor → stub (set UNISWAP_API_KEY to enable real swaps)");
+  }
 
   /** Per-user workflow factory — mirrors scheduler logic so A2A runs also write to the API. */
   const workflowFactory = (strategy: TradingStrategy) => {

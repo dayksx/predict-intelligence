@@ -39,6 +39,8 @@ export interface TriggeredAction {
   label: string;
   /** ISO 8601 */
   occurredAt: string;
+  /** undefined = unknown/pending, true = succeeded, false = failed */
+  success?: boolean;
   /** Primary explorer or product URL */
   primaryUrl?: string;
   primaryUrlLabel?: string;

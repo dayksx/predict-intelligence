@@ -53,7 +53,7 @@ export function makeActNode(
               action: "trade",
               direction,
               amount_usdc: decision.sizeUsdc ?? strategy.max_position_usdc,
-              confidence: decision.confidence,
+              confidence: decision.confidence ?? undefined,
               rationale: decision.reasoning,
               sources: decision.sources ?? [],
             },
