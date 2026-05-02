@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { namehash } from "viem/ens";
 import { waitForTransactionReceipt } from "viem/actions";
@@ -40,6 +41,23 @@ function shortenAddress(addr: string, head = 6, tail = 4): string {
 function shortenTxHash(hash: string, head = 10, tail = 8): string {
   if (hash.length <= head + tail + 1) return hash;
   return `${hash.slice(0, head)}…${hash.slice(-tail)}`;
+}
+
+type SignatureStepVariant = "idle" | "active" | "done" | "warn";
+
+function signatureStepCardClass(variant: SignatureStepVariant): string {
+  const base =
+    "rounded-lg border px-3 py-2.5 text-left transition-colors duration-200";
+  switch (variant) {
+    case "active":
+      return `${base} border-sky-400/85 bg-sky-50/95 text-sky-950 shadow-sm ring-1 ring-sky-300/45 dark:border-sky-600 dark:bg-sky-950/45 dark:text-sky-50 dark:ring-sky-700/45`;
+    case "done":
+      return `${base} border-emerald-300/70 bg-emerald-50/75 text-emerald-950 dark:border-emerald-800/45 dark:bg-emerald-950/30 dark:text-emerald-100`;
+    case "warn":
+      return `${base} border-amber-300/75 bg-amber-50/85 text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-100`;
+    default:
+      return `${base} border-slate-200/65 bg-white/50 text-slate-500 dark:border-slate-700/70 dark:bg-slate-950/40 dark:text-slate-400`;
+  }
 }
 
 /** Sepolia L2/sidechain explorer — canonical public txs view */
@@ -144,14 +162,29 @@ function FieldLabel({
 function SectionTitle({
   children,
   as: Tag = "h2",
+  step,
 }: {
   children: React.ReactNode;
   as?: "h2" | "h3";
+  /** 1-based step index shown in a compact badge */
+  step?: number;
 }) {
   return (
-    <Tag className="mb-2 border-l-[3px] border-sky-400/45 pl-3 text-[15px] font-semibold tracking-tight text-slate-900 dark:border-sky-500/40 dark:text-slate-50">
-      {children}
-    </Tag>
+    <div className="mb-4">
+      <div className="flex items-start gap-3 border-b border-slate-200/85 pb-3.5 dark:border-slate-700/75">
+        {step != null ? (
+          <span
+            className="mt-0.5 flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-lg bg-sky-100/95 text-sm font-semibold tabular-nums text-sky-900 shadow-sm ring-1 ring-sky-200/50 dark:bg-sky-950/50 dark:text-sky-200 dark:ring-sky-800/50"
+            aria-hidden
+          >
+            {step}
+          </span>
+        ) : null}
+        <Tag className="min-w-0 flex-1 text-lg font-semibold leading-snug tracking-tight text-slate-900 sm:text-[1.25rem] sm:leading-tight dark:text-slate-50">
+          {children}
+        </Tag>
+      </div>
+    </div>
   );
 }
 
@@ -183,7 +216,7 @@ function HelperText({
 }
 
 const formCardClass =
-  "rounded-lg border border-sky-100/55 bg-gradient-to-br from-sky-50/45 via-white to-white p-5 dark:border-sky-950/30 dark:from-sky-950/12 dark:via-slate-950 dark:to-slate-950 sm:p-6";
+  "rounded-xl border border-slate-200/80 bg-gradient-to-br from-white via-sky-50/20 to-white p-5 shadow-sm shadow-slate-900/[0.05] ring-1 ring-slate-100/80 dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-sky-950/20 dark:shadow-lg dark:shadow-black/25 dark:ring-slate-800/40 sm:p-6";
 
 const ORANGE_CAPABILITY_PILL_CLASS =
   "border-orange-200/80 bg-orange-50 text-orange-950 dark:border-orange-800 dark:bg-orange-950/50 dark:text-orange-200";
@@ -225,26 +258,37 @@ function FormStepCard({
   return (
     <div
       id={id}
-      className={`scroll-mt-28 ${formCardClass} ${className}`}
+      className={`scroll-mt-28 transition-shadow duration-200 ${formCardClass} ${className}`}
     >
       {children}
     </div>
   );
 }
 
-/** Section titles: keep in sync with `REGISTRATION_STEPS` labels and form `FieldLabel`s */
+/** Full titles inside each form section card */
 const REGISTRATION_SECTION_LABELS = {
   claim: "Claim your agent's name",
   agent: "Choose your agent's profile",
   delegate: "Amount to delegate",
   focus: "Define your agent's prompt",
+  register: "Register on-chain",
+} as const;
+
+/** Short labels for the header breadcrumb only */
+const REGISTRATION_NAV_LABELS = {
+  claim: "Claim name",
+  agent: "Choose profile",
+  focus: "Define prompt",
+  delegate: "Amount to delegate",
+  register: "Register on-chain",
 } as const;
 
 const REGISTRATION_STEPS = [
-  { id: "step-claim", label: REGISTRATION_SECTION_LABELS.claim },
-  { id: "step-agent", label: REGISTRATION_SECTION_LABELS.agent },
-  { id: "step-delegate", label: REGISTRATION_SECTION_LABELS.delegate },
-  { id: "step-focus", label: REGISTRATION_SECTION_LABELS.focus },
+  { id: "step-claim", label: REGISTRATION_NAV_LABELS.claim },
+  { id: "step-agent", label: REGISTRATION_NAV_LABELS.agent },
+  { id: "step-focus", label: REGISTRATION_NAV_LABELS.focus },
+  { id: "step-delegate", label: REGISTRATION_NAV_LABELS.delegate },
+  { id: "step-register", label: REGISTRATION_NAV_LABELS.register },
 ] as const;
 
 type RegistrationStepId = (typeof REGISTRATION_STEPS)[number]["id"];
@@ -282,17 +326,17 @@ function RegistrationStepsNav({
 
   return (
     <nav aria-label="Registration steps" className={navClassName}>
-      <ol className="flex list-none flex-wrap items-center gap-x-1.5 gap-y-2 pl-0 text-[11px] font-medium">
+      <ol className="flex list-none flex-wrap items-center gap-x-1 gap-y-2 pl-0 text-[11px] font-medium">
         {REGISTRATION_STEPS.map((step, i) => {
           const isActive = activeId === step.id;
           return (
-            <li key={step.id} className="flex items-center gap-x-1.5">
+            <li key={step.id} className="flex items-center gap-x-1">
               {i > 0 ? (
                 <span
-                  className="text-sky-200/55 select-none dark:text-sky-800/50"
+                  className="mx-0.5 select-none text-sky-300/70 dark:text-sky-700/60"
                   aria-hidden
                 >
-                  ·
+                  &gt;
                 </span>
               ) : null}
               <a
@@ -333,7 +377,18 @@ export function AgentRegistrationForm() {
   const [registrationStatus, setRegistrationStatus] =
     useState<RegistrationStatus>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  /** Which wallet signature is in progress: 1 = subdomain, 2 = resolver metadata */
+  const [signingStep, setSigningStep] = useState<0 | 1 | 2>(0);
   const [debouncedLabel, setDebouncedLabel] = useState("");
+  const router = useRouter();
+
+  useEffect(() => {
+    if (registrationStatus?.type !== "success") return;
+    const id = window.setTimeout(() => {
+      router.push("/dashboard");
+    }, 1600);
+    return () => window.clearTimeout(id);
+  }, [registrationStatus, router]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedLabel(labelInput), 400);
@@ -434,6 +489,7 @@ export function AgentRegistrationForm() {
     async (e: React.FormEvent) => {
       e.preventDefault();
       setRegistrationStatus(null);
+      setSigningStep(0);
 
       if (!isConnected || !address) {
         setRegistrationStatus({
@@ -500,6 +556,7 @@ export function AgentRegistrationForm() {
       }
 
       setIsSubmitting(true);
+      setSigningStep(1);
       try {
         const expiry =
           parentExpiry > BigInt("18446744073709551615")
@@ -525,6 +582,7 @@ export function AgentRegistrationForm() {
             const agent = MARKETPLACE_AGENTS.find((a) => a.id === selectedAgentId);
             if (agent) {
               try {
+                setSigningStep(2);
                 const resolver = await publicClient.readContract({
                   address: registrar,
                   abi: agenticSubdomainAbi,
@@ -578,6 +636,7 @@ export function AgentRegistrationForm() {
         setRegistrationStatus({ type: "error", message: msg });
       } finally {
         setIsSubmitting(false);
+        setSigningStep(0);
       }
     },
     [
@@ -626,6 +685,28 @@ export function AgentRegistrationForm() {
 
   const availabilityStatusId = "ens-label-availability";
 
+  const signatureStepVariants = useMemo(() => {
+    const success = registrationStatus?.type === "success";
+    const ok =
+      registrationStatus?.type === "success" ? registrationStatus : null;
+
+    const step1Done = Boolean(success || (isSubmitting && signingStep === 2));
+    const step1Active = isSubmitting && signingStep === 1;
+    let step1: SignatureStepVariant = "idle";
+    if (step1Active) step1 = "active";
+    else if (step1Done) step1 = "done";
+
+    const metaOk = Boolean(ok?.metadataTx);
+    const metaWarn = Boolean(ok?.metadataFailedNote && !ok?.metadataTx);
+    const step2Active = isSubmitting && signingStep === 2;
+    let step2: SignatureStepVariant = "idle";
+    if (metaWarn) step2 = "warn";
+    else if (metaOk) step2 = "done";
+    else if (step2Active) step2 = "active";
+
+    return { step1, step2 };
+  }, [registrationStatus, isSubmitting, signingStep]);
+
   return (
     <div className="w-full max-w-4xl">
       <article className="overflow-hidden rounded-2xl border border-sky-100/60 bg-white dark:border-sky-950/35 dark:bg-slate-950">
@@ -657,13 +738,15 @@ export function AgentRegistrationForm() {
         </header>
 
         <form onSubmit={onSubmit} className="px-6 py-8">
-          <div className="space-y-8">
+          <div className="space-y-10">
             <FormStepCard id="step-claim">
               <fieldset className="min-w-0 space-y-3 border-0 p-0">
               <legend className="sr-only">
                 {REGISTRATION_SECTION_LABELS.claim}
               </legend>
-              <SectionTitle>{REGISTRATION_SECTION_LABELS.claim}</SectionTitle>
+              <SectionTitle step={1}>
+                {REGISTRATION_SECTION_LABELS.claim}
+              </SectionTitle>
               <HelperText discrete>
                 This is your public handle under{" "}
                 <span className="font-mono font-medium text-sky-700/70 dark:text-sky-400/75">
@@ -732,7 +815,9 @@ export function AgentRegistrationForm() {
               <legend className="sr-only">
                 {REGISTRATION_SECTION_LABELS.agent}
               </legend>
-              <SectionTitle>{REGISTRATION_SECTION_LABELS.agent}</SectionTitle>
+              <SectionTitle step={2}>
+                {REGISTRATION_SECTION_LABELS.agent}
+              </SectionTitle>
               <HelperText discrete className="max-w-2xl">
                 Pick the operator that fits how you think—fee shown in ETH. Your
                 choice ships with the metadata step, not the name claim.
@@ -824,7 +909,9 @@ export function AgentRegistrationForm() {
                 </legend>
 
                 <div className="space-y-1.5">
-                  <SectionTitle>{REGISTRATION_SECTION_LABELS.focus}</SectionTitle>
+                  <SectionTitle step={3}>
+                    {REGISTRATION_SECTION_LABELS.focus}
+                  </SectionTitle>
                   <HelperText discrete>
                     Spell out your edge—topics you care about, the bet you are
                     making, and what would flip you. This is your signal on-chain.
@@ -934,7 +1021,7 @@ export function AgentRegistrationForm() {
               <legend className="sr-only">
                 {REGISTRATION_SECTION_LABELS.delegate}
               </legend>
-              <SectionTitle as="h3">
+              <SectionTitle as="h3" step={4}>
                 {REGISTRATION_SECTION_LABELS.delegate}
               </SectionTitle>
               <HelperText id="delegation-eth-hint" discrete>
@@ -989,56 +1076,14 @@ export function AgentRegistrationForm() {
               </fieldset>
             </FormStepCard>
 
-            <details className="group rounded-lg border border-sky-100/65 bg-sky-50/35 px-4 py-3 text-xs dark:border-sky-950/30 dark:bg-sky-950/18">
-              <summary className="cursor-pointer list-none font-medium text-sky-950/80 transition hover:text-sky-950 dark:text-sky-200/90 dark:hover:text-sky-100 [&::-webkit-details-marker]:hidden">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="text-[10px] transition-transform group-open:rotate-90">
-                    ▸
-                  </span>
-                  Technical details (contract, expiry, metadata keys)
-                </span>
-              </summary>
-              <div className="mt-3 space-y-3 border-l-2 border-sky-200/55 pl-3 font-mono text-[11px] leading-relaxed text-slate-500 dark:border-sky-800/45 dark:text-slate-500">
-                <p className="break-all">{registrar}</p>
-                <p>
-                  Parent expiry ·{" "}
-                  {!hasMounted
-                    ? "loading…"
-                    : parentExpiry !== undefined
-                      ? parentExpiry.toString()
-                      : expiryError
-                        ? "unavailable"
-                        : "loading…"}
-                </p>
-                <div className="font-sans text-[11px]">
-                  <p className="mb-1.5 font-medium text-slate-600 dark:text-slate-400">
-                    Metadata keys (public resolver / multicall)
-                  </p>
-                  <ul className="list-inside list-disc space-y-0.5 text-slate-500 dark:text-slate-500">
-                    {Object.values(AGENTIC_ENS_TEXT_KEYS).map((k) => (
-                      <li key={k}>{k}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </details>
-
             <FormStepCard
               id="step-register"
-              className="border-sky-100/70 bg-sky-50/40 dark:border-sky-900/45 dark:bg-sky-950/28"
+              className="border-sky-200/70 bg-gradient-to-br from-sky-50/50 via-white to-white ring-sky-100/60 dark:border-sky-800/60 dark:from-sky-950/35 dark:via-slate-950 dark:to-slate-950 dark:ring-sky-950/40"
             >
-              <div className="space-y-3">
-                <h2 className="sr-only">Register on-chain</h2>
-                <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-                  <span className="font-medium text-slate-800 dark:text-slate-200">
-                    Perceive · Reason · Act
-                  </span>
-                  {" — "}
-                  Connect your wallet, then use Register below. You&apos;ll confirm
-                  two short steps on the Sepolia test network: claim your handle,
-                  then publish your public profile. Approve each prompt in your
-                  wallet when it appears.
-                </p>
+              <div className="space-y-4">
+                <SectionTitle as="h2" step={5}>
+                  {REGISTRATION_SECTION_LABELS.register}
+                </SectionTitle>
                 <button
                   type="submit"
                   disabled={submitDisabled}
@@ -1052,12 +1097,87 @@ export function AgentRegistrationForm() {
                         className="inline-block size-4 shrink-0 animate-spin rounded-full border-2 border-white/35 border-t-white dark:border-slate-950/40 dark:border-t-slate-950"
                         aria-hidden
                       />
-                      <span>Confirm in wallet…</span>
+                      <span>
+                        {signingStep === 2
+                          ? "Step 2 of 2 — confirm in wallet…"
+                          : "Step 1 of 2 — confirm in wallet…"}
+                      </span>
                     </>
                   ) : (
                     "Register & publish"
                   )}
                 </button>
+                <div className="max-w-lg space-y-3 text-[10px] font-normal leading-snug text-slate-400/95 dark:text-slate-500">
+                  <p>
+                    <span className="font-medium text-slate-500 dark:text-slate-400">
+                      Perceive · Reason · Act
+                    </span>
+                    {" — "}
+                    Connect your wallet, then use Register above. On Sepolia you
+                    sign two transactions (your wallet will prompt once per step).
+                  </p>
+                  <ol className="list-none space-y-2 pl-0">
+                    <li
+                      className={signatureStepCardClass(signatureStepVariants.step1)}
+                    >
+                      <span className="font-semibold text-[11px] text-current">
+                        1 · Claim your handle
+                      </span>
+                      <span className="mt-1 block text-[9px] font-normal opacity-90">
+                        Registers your{" "}
+                        <span className="font-mono">your-label.agentic.eth</span>{" "}
+                        subname via the registrar contract.
+                      </span>
+                    </li>
+                    <li
+                      className={signatureStepCardClass(signatureStepVariants.step2)}
+                    >
+                      <span className="font-semibold text-[11px] text-current">
+                        2 · Publish your public profile
+                      </span>
+                      <span className="mt-1 block text-[9px] font-normal opacity-90">
+                        Writes your focus, thesis, and agent metadata on the
+                        public resolver (multicall).
+                      </span>
+                    </li>
+                  </ol>
+                  <p className="text-slate-400 dark:text-slate-500">
+                    Approve each prompt in your wallet when it appears.
+                  </p>
+                </div>
+                <details className="group rounded-lg border border-sky-100/70 bg-sky-50/40 px-4 py-3 text-xs dark:border-sky-900/40 dark:bg-sky-950/25">
+                  <summary className="cursor-pointer list-none font-medium text-sky-950/80 transition hover:text-sky-950 dark:text-sky-200/90 dark:hover:text-sky-100 [&::-webkit-details-marker]:hidden">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="text-[10px] transition-transform group-open:rotate-90">
+                        ▸
+                      </span>
+                      Technical details (contract, expiry, metadata keys)
+                    </span>
+                  </summary>
+                  <div className="mt-3 space-y-3 border-l-2 border-sky-200/55 pl-3 font-mono text-[11px] leading-relaxed text-slate-500 dark:border-sky-800/45 dark:text-slate-500">
+                    <p className="break-all">{registrar}</p>
+                    <p>
+                      Parent expiry ·{" "}
+                      {!hasMounted
+                        ? "loading…"
+                        : parentExpiry !== undefined
+                          ? parentExpiry.toString()
+                          : expiryError
+                            ? "unavailable"
+                            : "loading…"}
+                    </p>
+                    <div className="font-sans text-[11px]">
+                      <p className="mb-1.5 font-medium text-slate-600 dark:text-slate-400">
+                        Metadata keys (public resolver / multicall)
+                      </p>
+                      <ul className="list-inside list-disc space-y-0.5 text-slate-500 dark:text-slate-500">
+                        {Object.values(AGENTIC_ENS_TEXT_KEYS).map((k) => (
+                          <li key={k}>{k}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </details>
               </div>
             </FormStepCard>
           </div>
@@ -1084,6 +1204,9 @@ export function AgentRegistrationForm() {
                 </p>
                 <p className="mt-1 font-mono text-[13px] font-semibold text-sky-950 dark:text-sky-100">
                   {registrationStatus.fullName}
+                </p>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  Taking you to your dashboard…
                 </p>
               </div>
 

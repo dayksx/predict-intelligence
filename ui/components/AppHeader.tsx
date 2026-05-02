@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import { ConnectKitButtonClient } from "@/components/ConnectKitButtonClient";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -30,8 +31,14 @@ function shortenAddress(address: string, head = 6, tail = 4): string {
 }
 
 export function AppHeader() {
+  const pathname = usePathname();
   const hasMounted = useHasMounted();
   const { isConnected } = useAccount();
+  const isDashboard = useMemo(
+    () => Boolean(pathname?.startsWith("/dashboard")),
+    [pathname],
+  );
+  const isHome = pathname === "/";
   const [address, setAddress] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
@@ -98,14 +105,44 @@ export function AppHeader() {
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/90">
       <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
-        <Link
-          href="/"
-          className="text-xl leading-none text-slate-900 transition-opacity hover:opacity-80 dark:text-slate-100"
-          aria-label="Home — agents"
-          title="Agentic execution & prediction"
-        >
-          <span aria-hidden>🤖</span>
-        </Link>
+        <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+          <Link
+            href="/"
+            className="text-xl leading-none text-slate-900 transition-opacity hover:opacity-80 dark:text-slate-100"
+            aria-label="Home — agents"
+            title="Agentic execution & prediction"
+          >
+            <span aria-hidden>🤖</span>
+          </Link>
+          <Link
+            href="/#register-agent"
+            title="Create a new agent"
+            aria-label="Create a new agent — registration form"
+            className={[
+              "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+              "transition-[color,background-color] duration-200 ease-out",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-400/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-slate-500/30 dark:focus-visible:ring-offset-slate-950",
+              isHome
+                ? "bg-sky-100/85 text-sky-900 dark:bg-sky-950/45 dark:text-sky-200"
+                : "text-slate-500 hover:bg-slate-100/70 hover:text-sky-800 dark:text-slate-500 dark:hover:bg-white/[0.05] dark:hover:text-sky-300",
+            ].join(" ")}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="none"
+              className="h-[18px] w-[18px]"
+              stroke="currentColor"
+              strokeWidth={1.35}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <circle cx="10" cy="10" r="7.25" />
+              <path d="M10 7v6M7 10h6" />
+            </svg>
+          </Link>
+        </div>
 
         <nav className="flex shrink-0 items-center gap-2 sm:gap-3">
           <ThemeToggle />
@@ -113,22 +150,27 @@ export function AppHeader() {
           {hasMounted && isConnected ? (
             <Link
               href="/dashboard"
-              className="group inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-slate-50/90 px-3 py-1.5 text-xs font-semibold tracking-tight text-slate-800 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-slate-600 dark:hover:bg-slate-800 sm:px-3.5 sm:py-2 sm:text-sm"
+              title="Dashboard"
+              aria-label="Dashboard"
+              aria-current={isDashboard ? "page" : undefined}
+              className={[
+                "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                "transition-[color,background-color] duration-200 ease-out",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-400/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-slate-500/30 dark:focus-visible:ring-offset-slate-950",
+                isDashboard
+                  ? "bg-slate-100/90 text-slate-900 dark:bg-white/[0.07] dark:text-slate-100"
+                  : "text-slate-500 hover:bg-slate-100/70 hover:text-slate-800 dark:text-slate-500 dark:hover:bg-white/[0.05] dark:hover:text-slate-200",
+              ].join(" ")}
             >
-              <span
-                className="text-slate-500 transition-colors group-hover:text-slate-800 dark:text-slate-400 dark:group-hover:text-slate-200"
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="h-[18px] w-[18px]"
                 aria-hidden
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  className="h-3.5 w-3.5 sm:h-4 sm:w-4"
-                >
-                  <path d="M3 4a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM12 4a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1V4zM3 12a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1v-3zM12 12a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-3z" />
-                </svg>
-              </span>
-              Dashboard
+                <path d="M3 4a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM12 4a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1V4zM3 12a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1v-3zM12 12a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-3z" />
+              </svg>
             </Link>
           ) : null}
         </nav>

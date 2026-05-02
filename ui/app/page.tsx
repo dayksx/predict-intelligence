@@ -7,7 +7,10 @@ export default function Home() {
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_55%_at_50%_-10%,rgba(15,23,42,0.04),transparent)] dark:bg-[radial-gradient(ellipse_80%_55%_at_50%_-10%,rgba(148,163,184,0.06),transparent)]"
         aria-hidden
       />
-      <main className="relative w-full max-w-4xl flex-1 sm:flex-none sm:justify-center">
+      <main
+        id="register-agent"
+        className="relative w-full max-w-4xl scroll-mt-24 flex-1 sm:flex-none sm:justify-center"
+      >
         <AgentRegistrationForm />
       </main>
     </div>
