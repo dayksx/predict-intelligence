@@ -16,9 +16,9 @@ export function AgentLiveSidebar({ label }: { label: string }) {
   return (
     <section
       aria-label="Agent conversation and live activity"
-      className="w-full rounded-xl border border-sky-200/80 bg-gradient-to-br from-sky-50/90 via-white to-zinc-50/80 p-3 dark:border-sky-800/50 dark:from-sky-950/25 dark:via-zinc-950 dark:to-zinc-950 sm:p-4"
+      className="flex h-full min-h-0 w-full flex-col rounded-xl border border-sky-200/80 bg-gradient-to-br from-sky-50/90 via-white to-zinc-50/80 p-3 dark:border-sky-800/50 dark:from-sky-950/25 dark:via-zinc-950 dark:to-zinc-950 sm:p-4"
     >
-      <div className="grid w-full gap-3 md:gap-4 lg:grid-cols-12 lg:items-start">
+      <div className="grid min-h-0 w-full flex-1 gap-3 md:gap-4 lg:grid-cols-12 lg:items-stretch">
         <div className="order-2 lg:order-1 lg:col-span-5 xl:col-span-4">
           <AgentLiveConsole lines={lines} />
         </div>

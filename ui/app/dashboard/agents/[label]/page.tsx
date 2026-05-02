@@ -11,6 +11,10 @@ import {
   isValidAgentLabel,
   triggerKindPresentation,
 } from "@/lib/agent-activities";
+import {
+  AgentDelegationMetricsStrip,
+  AgentDelegationOutcomeDiagramPanel,
+} from "@/components/agent/AgentDelegationYieldHero";
 import { AgentLiveSidebar } from "@/components/agent/AgentLiveSidebar";
 import { useEnsAvatar, useEnsText } from "wagmi";
 import { sepolia } from "wagmi/chains";
@@ -56,6 +60,12 @@ export default function AgentActivitiesPage() {
     chainId,
     query: { enabled },
   });
+  const { data: delegatedAmountEns } = useEnsText({
+    name: fullName,
+    key: AGENTIC_ENS_TEXT_KEYS.delegatedAmount,
+    chainId,
+    query: { enabled },
+  });
 
   const displayName =
     agentNameRecord?.trim() || (valid ? label : "Unknown agent");
@@ -81,7 +91,7 @@ export default function AgentActivitiesPage() {
 
   return (
     <div className="flex min-h-full flex-1 flex-col bg-zinc-50 font-sans dark:bg-black">
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6">
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-5 sm:px-6 sm:py-5">
         <div>
           <Link
             href="/dashboard"
@@ -90,7 +100,7 @@ export default function AgentActivitiesPage() {
             ← Dashboard
           </Link>
 
-          <div className="mt-6 flex flex-wrap items-start gap-4">
+          <div className="mt-4 flex flex-wrap items-start gap-4">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-sky-200 bg-zinc-100 ring-2 ring-sky-500/15 dark:border-sky-800 dark:bg-zinc-800 dark:ring-sky-400/10">
               {avatar ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -107,7 +117,7 @@ export default function AgentActivitiesPage() {
             </div>
             <div className="min-w-0 flex-1">
               <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
-                Agent activities
+                Your agent
               </h1>
               <p className="mt-1 font-mono text-sm text-sky-700 dark:text-sky-300">
                 {fullName}
@@ -124,24 +134,27 @@ export default function AgentActivitiesPage() {
                 </span>
               </div>
               <p className="mt-3 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
-                Inputs, decisions grounded in your ENS prompt and focus, and
-                downstream triggers — each section below uses the same color cue.
+                P&amp;L spans the width below; chart and chat sit underneath, then
+                activity feeds.
               </p>
             </div>
           </div>
 
-          <p className="mt-4 rounded-lg border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-xs leading-relaxed text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-            Perceive / Reason runs / triggers below use illustrative sample data
-            until your execution pipeline writes real runs. The band below is a
-            full-width chat and live console; set{" "}
-            <span className="font-mono">AGENT_A2A_URL</span> and{" "}
-            <span className="font-mono">GRAPHITI_URL</span> for live replies and
-            alpha ingestion. ENS thesis and focus load live from Sepolia when
-            set on this name.
-          </p>
+
         </div>
 
-        <AgentLiveSidebar key={label} label={label} />
+        <AgentDelegationMetricsStrip ensDelegatedAmount={delegatedAmountEns} />
+
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch lg:gap-5">
+          <div className="w-full shrink-0 lg:max-w-[min(100%,22.5rem)] xl:max-w-[24rem]">
+            <AgentDelegationOutcomeDiagramPanel
+              ensDelegatedAmount={delegatedAmountEns}
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <AgentLiveSidebar key={label} label={label} />
+          </div>
+        </div>
 
         <div className="space-y-6">
         {feed ? (
