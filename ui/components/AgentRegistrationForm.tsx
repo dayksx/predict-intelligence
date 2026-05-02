@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { namehash } from "viem/ens";
 import { waitForTransactionReceipt } from "viem/actions";
 import {
   useAccount,
@@ -23,6 +24,7 @@ import {
   getRegistrarAddress,
   INTEREST_TOPICS,
   nameWrapperViewAbi,
+  normalizeEnsLabel,
   validateEnsLabel,
   type InterestTopicValue,
   type MarketplaceAgent,
@@ -77,6 +79,26 @@ function readExpiryFromGetData(data: unknown): bigint | undefined {
     return typeof v === "bigint" ? v : BigInt(String(v));
   }
   return undefined;
+}
+
+const ZERO_ADDRESS =
+  "0x0000000000000000000000000000000000000000" as `0x${string}`;
+
+function readOwnerFromGetData(data: unknown): `0x${string}` | undefined {
+  if (data == null) return undefined;
+  if (Array.isArray(data) && data.length >= 1) {
+    const o = data[0];
+    if (typeof o === "string" && o.startsWith("0x")) return o as `0x${string}`;
+  }
+  if (typeof data === "object" && data !== null && "owner" in data) {
+    const o = (data as { owner: unknown }).owner;
+    if (typeof o === "string" && o.startsWith("0x")) return o as `0x${string}`;
+  }
+  return undefined;
+}
+
+function isZeroAddress(addr: `0x${string}`): boolean {
+  return addr.toLowerCase() === ZERO_ADDRESS.toLowerCase();
 }
 
 /** Empty string is valid (optional field). */
@@ -176,19 +198,19 @@ function FormStepCard({
 
 /** Section titles: keep in sync with `REGISTRATION_STEPS` labels and form `FieldLabel`s */
 const REGISTRATION_SECTION_LABELS = {
-  focus: "Share your thesis",
-  agent: "Choose your agent",
+  claim: "Claim your agent's name",
+  agent: "Choose your agent's profile",
   delegate: "Amount to delegate",
-  claim: "Claim a name",
-  register: "Perceive · Reason · Act",
+  focus: "Define your agent's prompt",
+  registerNav: "Register",
 } as const;
 
 const REGISTRATION_STEPS = [
-  { id: "step-focus", label: REGISTRATION_SECTION_LABELS.focus },
+  { id: "step-claim", label: REGISTRATION_SECTION_LABELS.claim },
   { id: "step-agent", label: REGISTRATION_SECTION_LABELS.agent },
   { id: "step-delegate", label: REGISTRATION_SECTION_LABELS.delegate },
-  { id: "step-claim", label: REGISTRATION_SECTION_LABELS.claim },
-  { id: "step-register", label: REGISTRATION_SECTION_LABELS.register },
+  { id: "step-focus", label: REGISTRATION_SECTION_LABELS.focus },
+  { id: "step-register", label: REGISTRATION_SECTION_LABELS.registerNav },
 ] as const;
 
 type RegistrationStepId = (typeof REGISTRATION_STEPS)[number]["id"];
@@ -199,13 +221,13 @@ function RegistrationStepsNav({
 }: {
   navClassName?: string;
 }) {
-  const [activeId, setActiveId] = useState<RegistrationStepId>("step-focus");
+  const [activeId, setActiveId] = useState<RegistrationStepId>("step-claim");
 
   useEffect(() => {
     const headerReserve = 72;
 
     function updateActive() {
-      let current: RegistrationStepId = "step-focus";
+      let current: RegistrationStepId = "step-claim";
       for (const { id } of REGISTRATION_STEPS) {
         const el = document.getElementById(id);
         if (!el) continue;
@@ -277,6 +299,12 @@ export function AgentRegistrationForm() {
   const [registrationStatus, setRegistrationStatus] =
     useState<RegistrationStatus>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [debouncedLabel, setDebouncedLabel] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedLabel(labelInput), 400);
+    return () => clearTimeout(t);
+  }, [labelInput]);
 
   const { data: parentNode } = useReadContract({
     address: registrar,
@@ -312,6 +340,59 @@ export function AgentRegistrationForm() {
   });
 
   const parentExpiry = readExpiryFromGetData(parentWrap);
+
+  const normalizedAvailabilityLabel = useMemo(() => {
+    const err = validateEnsLabel(debouncedLabel);
+    if (err) return undefined;
+    return normalizeEnsLabel(debouncedLabel);
+  }, [debouncedLabel]);
+
+  const childNameTokenId = useMemo(() => {
+    if (!normalizedAvailabilityLabel) return undefined;
+    return BigInt(
+      namehash(`${normalizedAvailabilityLabel}.agentic.eth`),
+    );
+  }, [normalizedAvailabilityLabel]);
+
+  const {
+    data: childWrap,
+    isFetching: isChildAvailabilityFetching,
+    isError: isChildAvailabilityError,
+  } = useReadContract({
+    address: nameWrapperAddress,
+    abi: nameWrapperViewAbi,
+    functionName: "getData",
+    args: childNameTokenId !== undefined ? [childNameTokenId] : undefined,
+    chainId: sepolia.id,
+    query: {
+      enabled:
+        Boolean(
+          nameWrapperAddress &&
+            nameWrapperAddress !== ZERO_ADDRESS &&
+            childNameTokenId !== undefined,
+        ),
+    },
+  });
+
+  const childOwner = readOwnerFromGetData(childWrap);
+
+  const inputAlignedWithDebouncedAvailability =
+    normalizeEnsLabel(labelInput) === normalizedAvailabilityLabel &&
+    normalizedAvailabilityLabel !== undefined;
+
+  const isEnsNameTaken =
+    inputAlignedWithDebouncedAvailability &&
+    childOwner !== undefined &&
+    !isZeroAddress(childOwner);
+
+  const isEnsNameAvailable =
+    inputAlignedWithDebouncedAvailability &&
+    childOwner !== undefined &&
+    isZeroAddress(childOwner);
+
+  const showAvailabilityChecking =
+    Boolean(normalizedAvailabilityLabel) &&
+    (!inputAlignedWithDebouncedAvailability || isChildAvailabilityFetching);
 
   const { writeContractAsync } = useWriteContract();
 
@@ -360,6 +441,28 @@ export function AgentRegistrationForm() {
             : "Loading parent expiry… try again in a moment.",
         });
         return;
+      }
+
+      if (publicClient && nameWrapperAddress) {
+        try {
+          const tokenId = BigInt(namehash(`${label}.agentic.eth`));
+          const check = await publicClient.readContract({
+            address: nameWrapperAddress,
+            abi: nameWrapperViewAbi,
+            functionName: "getData",
+            args: [tokenId],
+          });
+          const owner = readOwnerFromGetData(check);
+          if (owner !== undefined && !isZeroAddress(owner)) {
+            setRegistrationStatus({
+              type: "error",
+              message: "This name is already registered on ENS.",
+            });
+            return;
+          }
+        } catch {
+          // getData can revert; let the user try on-chain or retry.
+        }
       }
 
       setIsSubmitting(true);
@@ -458,6 +561,7 @@ export function AgentRegistrationForm() {
       thesisPrompt,
       switchChainAsync,
       writeContractAsync,
+      nameWrapperAddress,
     ],
   );
 
@@ -470,7 +574,8 @@ export function AgentRegistrationForm() {
     !hasMounted ||
     !isConnected ||
     isSubmitting ||
-    parentExpiry === undefined;
+    parentExpiry === undefined ||
+    isEnsNameTaken;
 
   const submitDisabledTitle = (() => {
     if (!submitDisabled) return undefined;
@@ -478,8 +583,14 @@ export function AgentRegistrationForm() {
     if (!isConnected) return "Connect your wallet to register.";
     if (parentExpiry === undefined) return "Loading contract data from Sepolia…";
     if (isSubmitting) return "Waiting for wallet confirmation.";
+    if (isEnsNameTaken) return "This name is already taken.";
     return undefined;
   })();
+
+  const liveLabelFormatError =
+    labelInput.trim() === "" ? null : validateEnsLabel(labelInput);
+
+  const availabilityStatusId = "ens-label-availability";
 
   return (
     <div className="w-full max-w-4xl">
@@ -513,129 +624,71 @@ export function AgentRegistrationForm() {
 
         <form onSubmit={onSubmit} className="px-6 py-8">
           <div className="space-y-8">
-            {/* Focus + thesis */}
-            <FormStepCard id="step-focus">
-              <fieldset className="min-w-0 space-y-6 border-0 p-0">
-                <legend className="sr-only">
-                  {REGISTRATION_SECTION_LABELS.focus}
-                </legend>
-
-                <div className="space-y-2">
-                  <SectionTitle>{REGISTRATION_SECTION_LABELS.focus}</SectionTitle>
-                  <HelperText className="max-w-2xl">
-                    Here you shape your public agent profile:{" "}
-                    <strong className="font-medium text-sky-800/90 dark:text-sky-300/90">
-                      Focus
-                    </strong>{" "}
-                    tags the themes you care about;{" "}
-                    <strong className="font-medium text-sky-800/90 dark:text-sky-300/90">
-                      Thesis
-                    </strong>{" "}
-                    is where you spell out your view, what you monitor, and what
-                    would prove you wrong. Together they don’t create your
-                    subdomain—that happens when you claim a name later. After
-                    registration succeeds, a separate step writes these fields (and
-                    your later choices) into ENS text records on Sepolia so they’re
-                    readable on-chain with your{" "}
-                    <span className="font-mono text-[13px] text-sky-800/85 dark:text-sky-300/85">
-                      *.agentic.eth
-                    </span>{" "}
-                    name.
-                  </HelperText>
-                </div>
-
-                <div className="space-y-6">
-                  <div>
-                    <FieldLabel>Focus</FieldLabel>
-                    <HelperText id="areas-interest-hint" className="mb-3">
-                      Add themes that describe what you track (optional).
-                    </HelperText>
-                    <div
-                      className="flex flex-wrap items-center gap-x-2 gap-y-2 rounded-lg border border-sky-100/65 bg-white px-3 py-2.5 dark:border-sky-950/25 dark:bg-slate-950"
-                      role="group"
-                      aria-describedby="areas-interest-hint"
-                    >
-                <div className="relative shrink-0">
-                  <select
-                    aria-label="Add focus theme"
-                    value=""
-                    onChange={(e) => {
-                      const v = e.target.value as InterestTopicValue | "";
-                      if (!v || selectedInterests.includes(v)) return;
-                      setSelectedInterests((prev) => [...prev, v]);
-                      e.target.value = "";
-                    }}
-                    className="h-8 min-w-[8.5rem] cursor-pointer appearance-none rounded-md border border-sky-100/80 bg-sky-50/50 py-1 pr-7 pl-2.5 text-xs text-slate-800 outline-none transition hover:border-sky-200/90 hover:bg-sky-50/70 focus-visible:border-sky-400/80 focus-visible:ring-0 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-200 dark:hover:border-sky-800/60 dark:hover:bg-slate-900"
-                  >
-                    <option value="">Add topic…</option>
-                    {INTEREST_TOPICS.filter(
-                      (t) => !selectedInterests.includes(t.value),
-                    ).map((t) => (
-                      <option key={t.value} value={t.value}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
-                  <span
-                    className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-[10px] text-slate-400 dark:text-slate-500"
-                    aria-hidden
-                  >
-                    ▾
-                  </span>
-                </div>
-                <ul className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-                  {selectedInterests.map((value) => {
-                    const topicLabel =
-                      INTEREST_TOPICS.find((t) => t.value === value)?.label ??
-                      value;
-                    return (
-                      <li key={value}>
-                        <span className="inline-flex max-w-full items-center gap-0.5 rounded-md border border-sky-100/75 bg-sky-50/55 py-0.5 pr-0.5 pl-2 text-[11px] font-medium text-slate-800 dark:border-sky-900/35 dark:bg-sky-950/25 dark:text-slate-200">
-                          <span className="truncate">{topicLabel}</span>
-                          <button
-                            type="button"
-                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 transition hover:bg-slate-200 hover:text-slate-900 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-                            aria-label={`Remove ${topicLabel}`}
-                            onClick={() =>
-                              setSelectedInterests((prev) =>
-                                prev.filter((x) => x !== value),
-                              )
-                            }
-                          >
-                            ×
-                          </button>
-                        </span>
-                      </li>
-                    );
-                  })}
-                  {selectedInterests.length === 0 ? (
-                    <li className="text-xs text-slate-400 not-italic dark:text-slate-600">
-                      No themes yet
-                    </li>
-                  ) : null}
-                </ul>
+            <FormStepCard id="step-claim">
+              <fieldset className="min-w-0 space-y-3 border-0 p-0">
+              <legend className="sr-only">
+                {REGISTRATION_SECTION_LABELS.claim}
+              </legend>
+              <SectionTitle>{REGISTRATION_SECTION_LABELS.claim}</SectionTitle>
+              <HelperText>
+                This is your public handle under{" "}
+                <span className="font-mono font-semibold text-sky-800/90 dark:text-sky-300/90">
+                  .agentic.eth
+                </span>
+                — make it yours before someone else does.
+              </HelperText>
+              <FieldLabel htmlFor="ens-label">Your handle</FieldLabel>
+              <div className="flex min-w-0 max-w-md flex-wrap items-center gap-2 sm:flex-nowrap">
+                <input
+                  id="ens-label"
+                  name="ensLabel"
+                  type="text"
+                  autoComplete="off"
+                  placeholder="e.g. sharp-alpha"
+                  value={labelInput}
+                  onChange={(e) => setLabelInput(e.target.value)}
+                  aria-describedby={`ens-label-rules ${availabilityStatusId}`}
+                  className={`${inputBase} min-w-0 flex-1 sm:min-w-[12rem]`}
+                />
+                <span className="shrink-0 font-mono text-sm font-semibold text-sky-700/80 tabular-nums dark:text-sky-400/85">
+                  .agentic.eth
+                </span>
               </div>
-                  </div>
-
-                  <div>
-                    <FieldLabel htmlFor="thesis-prompt">Thesis</FieldLabel>
-                    <HelperText id="thesis-prompt-hint" className="mb-3">
-                      Your view, what you watch, and what would change your mind
-                      (optional).
-                    </HelperText>
-                    <textarea
-                      id="thesis-prompt"
-                      name="thesisPrompt"
-                      rows={5}
-                      maxLength={4000}
-                      placeholder="Core thesis, signals you track, upside and downside risks…"
-                      value={thesisPrompt}
-                      onChange={(e) => setThesisPrompt(e.target.value)}
-                      aria-describedby="thesis-prompt-hint"
-                      className="w-full resize-y rounded-lg border border-slate-200/95 bg-white px-3 py-2.5 text-sm leading-relaxed text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-500/85 focus:ring-0 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400/80"
-                    />
-                  </div>
-                </div>
+              <p
+                id="ens-label-rules"
+                className="mt-1.5 max-w-md text-[10px] leading-snug font-normal text-slate-400/75 dark:text-slate-500/80"
+              >
+                3–63 chars: lowercase letters, digits, hyphens only.
+              </p>
+              <p
+                id={availabilityStatusId}
+                role="status"
+                aria-live="polite"
+                className="mt-1.5 max-w-md text-[11px] leading-snug"
+              >
+                {labelInput.trim() === "" ? null : liveLabelFormatError ? (
+                  <span className="text-amber-800/90 dark:text-amber-200/90">
+                    {liveLabelFormatError}
+                  </span>
+                ) : showAvailabilityChecking ? (
+                  <span className="text-slate-500 dark:text-slate-400">
+                    Checking availability on Sepolia…
+                  </span>
+                ) : isChildAvailabilityError ? (
+                  <span className="text-slate-500 dark:text-slate-500">
+                    Couldn’t verify on-chain. You can still try, or refresh and
+                    check your RPC.
+                  </span>
+                ) : isEnsNameTaken ? (
+                  <span className="font-medium text-amber-800 dark:text-amber-200/95">
+                    Already taken — pick another name.
+                  </span>
+                ) : isEnsNameAvailable ? (
+                  <span className="font-medium text-emerald-800/90 dark:text-emerald-300/90">
+                    Available
+                  </span>
+                ) : null}
+              </p>
               </fieldset>
             </FormStepCard>
 
@@ -647,8 +700,8 @@ export function AgentRegistrationForm() {
               </legend>
               <SectionTitle>{REGISTRATION_SECTION_LABELS.agent}</SectionTitle>
               <HelperText className="max-w-2xl">
-                Each profile includes an access fee (shown in ETH). Your choice
-                is saved with the metadata transaction, not the subdomain call.
+                Pick the operator that fits how you think—fee shown in ETH. Your
+                choice ships with the metadata step, not the name claim.
               </HelperText>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {MARKETPLACE_AGENTS.map((agent: MarketplaceAgent) => {
@@ -729,6 +782,117 @@ export function AgentRegistrationForm() {
               </fieldset>
             </FormStepCard>
 
+            {/* Focus + thesis */}
+            <FormStepCard id="step-focus">
+              <fieldset className="min-w-0 space-y-6 border-0 p-0">
+                <legend className="sr-only">
+                  {REGISTRATION_SECTION_LABELS.focus}
+                </legend>
+
+                <div className="space-y-2">
+                  <SectionTitle>{REGISTRATION_SECTION_LABELS.focus}</SectionTitle>
+                  <HelperText>
+                    Spell out your edge—topics you care about, the bet you are
+                    making, and what would flip you. This is your signal on-chain.
+                  </HelperText>
+                </div>
+
+                <div className="space-y-6">
+                  <div>
+                    <FieldLabel>Your focus areas</FieldLabel>
+                    <HelperText id="areas-interest-hint" className="mb-3">
+                      Stack tags for the arenas you actually watch—not a résumé, a
+                      radar.
+                    </HelperText>
+                    <div
+                      className="flex flex-wrap items-center gap-x-2 gap-y-2 rounded-lg border border-sky-100/65 bg-white px-3 py-2.5 dark:border-sky-950/25 dark:bg-slate-950"
+                      role="group"
+                      aria-describedby="areas-interest-hint"
+                    >
+                      <div className="relative shrink-0">
+                  <select
+                    aria-label="Add a topic tag"
+                    value=""
+                    onChange={(e) => {
+                      const v = e.target.value as InterestTopicValue | "";
+                      if (!v || selectedInterests.includes(v)) return;
+                      setSelectedInterests((prev) => [...prev, v]);
+                      e.target.value = "";
+                    }}
+                    className="h-8 min-w-[8.5rem] cursor-pointer appearance-none rounded-md border border-sky-100/80 bg-sky-50/50 py-1 pr-7 pl-2.5 text-xs text-slate-800 outline-none transition hover:border-sky-200/90 hover:bg-sky-50/70 focus-visible:border-sky-400/80 focus-visible:ring-0 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-200 dark:hover:border-sky-800/60 dark:hover:bg-slate-900"
+                  >
+                    <option value="">Add a tag…</option>
+                    {INTEREST_TOPICS.filter(
+                      (t) => !selectedInterests.includes(t.value),
+                    ).map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span
+                    className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-[10px] text-slate-400 dark:text-slate-500"
+                    aria-hidden
+                  >
+                    ▾
+                  </span>
+                      </div>
+                      <ul className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                  {selectedInterests.map((value) => {
+                    const topicLabel =
+                      INTEREST_TOPICS.find((t) => t.value === value)?.label ??
+                      value;
+                    return (
+                      <li key={value}>
+                        <span className="inline-flex max-w-full items-center gap-0.5 rounded-md border border-sky-100/75 bg-sky-50/55 py-0.5 pr-0.5 pl-2 text-[11px] font-medium text-slate-800 dark:border-sky-900/35 dark:bg-sky-950/25 dark:text-slate-200">
+                          <span className="truncate">{topicLabel}</span>
+                          <button
+                            type="button"
+                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 transition hover:bg-slate-200 hover:text-slate-900 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                            aria-label={`Remove ${topicLabel}`}
+                            onClick={() =>
+                              setSelectedInterests((prev) =>
+                                prev.filter((x) => x !== value),
+                              )
+                            }
+                          >
+                            ×
+                          </button>
+                        </span>
+                      </li>
+                    );
+                  })}
+                  {selectedInterests.length === 0 ? (
+                    <li className="text-xs text-slate-400 not-italic dark:text-slate-600">
+                      Start with one tag—show where you operate.
+                    </li>
+                  ) : null}
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div>
+                    <FieldLabel htmlFor="thesis-prompt">Your thesis</FieldLabel>
+                    <HelperText id="thesis-prompt-hint" className="mb-3">
+                      Conviction in plain language: what you believe, what you are
+                      tracking, and what would prove you wrong.
+                    </HelperText>
+                    <textarea
+                      id="thesis-prompt"
+                      name="thesisPrompt"
+                      rows={5}
+                      maxLength={4000}
+                      placeholder="The one-liner bet, the signals you trust, what keeps you up at night…"
+                      value={thesisPrompt}
+                      onChange={(e) => setThesisPrompt(e.target.value)}
+                      aria-describedby="thesis-prompt-hint"
+                      className="w-full resize-y rounded-lg border border-slate-200/95 bg-white px-3 py-2.5 text-sm leading-relaxed text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-500/85 focus:ring-0 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400/80"
+                    />
+                  </div>
+                </div>
+              </fieldset>
+            </FormStepCard>
+
             <FormStepCard id="step-delegate">
               <fieldset className="min-w-0 space-y-4 border-0 p-0">
               <legend className="sr-only">
@@ -738,8 +902,8 @@ export function AgentRegistrationForm() {
                 {REGISTRATION_SECTION_LABELS.delegate}
               </SectionTitle>
               <HelperText id="delegation-eth-hint">
-                Optional intent for how much you plan to delegate—stored with
-                metadata (not settled in this flow).
+                Say how much ETH you intend to put behind this agent—stored as
+                intent on your profile (no transfer happens in this flow).
               </HelperText>
               <FieldLabel htmlFor="delegation-eth">Amount</FieldLabel>
               <div className="flex max-w-[14rem] items-center gap-2">
@@ -749,7 +913,7 @@ export function AgentRegistrationForm() {
                   type="text"
                   inputMode="decimal"
                   autoComplete="off"
-                  placeholder="0.0"
+                  placeholder="0.25"
                   value={delegationEth}
                   onChange={(e) => setDelegationEth(e.target.value)}
                   aria-describedby="delegation-eth-hint"
@@ -762,11 +926,10 @@ export function AgentRegistrationForm() {
 
               {selectedAgent ? (
                 <p className="rounded-lg border border-sky-100/70 bg-sky-50/45 px-3 py-2 text-xs text-slate-600 dark:border-sky-900/35 dark:bg-sky-950/22 dark:text-slate-400">
-                  Agent{" "}
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
                     {selectedAgent.name}
-                  </span>{" "}
-                  ·{" "}
+                  </span>
+                  {" · "}
                   <span className="font-mono font-semibold tabular-nums text-slate-800 dark:text-slate-200">
                     {selectedAgent.accessPriceEth} ETH
                   </span>{" "}
@@ -774,49 +937,19 @@ export function AgentRegistrationForm() {
                   {delegationEth.trim() ? (
                     <>
                       {" "}
-                      · delegate{" "}
+                      · you flagged{" "}
                       <span className="font-mono font-semibold tabular-nums text-slate-800 dark:text-slate-200">
                         {delegationEth.trim()}
                       </span>{" "}
-                      ETH
+                      ETH to delegate
                     </>
-                  ) : null}{" "}
-                  —{" "}
+                  ) : null}
+                  .{" "}
                   <span className="text-slate-500 dark:text-slate-500">
-                    Paid access is separate from the ENS transactions.
+                    Agent access is billed separately from the ENS txs.
                   </span>
                 </p>
               ) : null}
-              </fieldset>
-            </FormStepCard>
-
-            <FormStepCard id="step-claim">
-              <fieldset className="min-w-0 space-y-3 border-0 p-0">
-              <legend className="sr-only">
-                {REGISTRATION_SECTION_LABELS.claim}
-              </legend>
-              <SectionTitle as="h3">
-                {REGISTRATION_SECTION_LABELS.claim}
-              </SectionTitle>
-              <HelperText>
-                3–63 characters: lowercase letters, digits, and hyphens only.
-              </HelperText>
-              <FieldLabel htmlFor="ens-label">Subdomain</FieldLabel>
-              <div className="flex min-w-0 max-w-md flex-wrap items-center gap-2 sm:flex-nowrap">
-                <input
-                  id="ens-label"
-                  name="ensLabel"
-                  type="text"
-                  autoComplete="off"
-                  placeholder="myagent"
-                  value={labelInput}
-                  onChange={(e) => setLabelInput(e.target.value)}
-                  className={`${inputBase} min-w-0 flex-1 sm:min-w-[12rem]`}
-                />
-                <span className="shrink-0 font-mono text-sm font-semibold text-sky-700/80 tabular-nums dark:text-sky-400/85">
-                  .agentic.eth
-                </span>
-              </div>
               </fieldset>
             </FormStepCard>
 
@@ -856,14 +989,15 @@ export function AgentRegistrationForm() {
               id="step-register"
               className="border-sky-100/70 bg-sky-50/40 dark:border-sky-900/45 dark:bg-sky-950/28"
             >
-              <div className="space-y-4">
-                <SectionTitle as="h3">
-                  {REGISTRATION_SECTION_LABELS.register}
-                </SectionTitle>
-                <HelperText>
-                  Submits two on-chain steps on Sepolia: subdomain registration,
-                  then metadata. Connect your wallet first.
-                </HelperText>
+              <div className="space-y-3">
+                <h2 className="sr-only">Register on-chain</h2>
+                <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                  <span className="font-medium text-slate-800 dark:text-slate-200">
+                    Perceive · Reason · Act
+                  </span>
+                  — two Sepolia transactions: claim your handle, then publish your
+                  public metadata. Connect your wallet and sign below.
+                </p>
                 <button
                   type="submit"
                   disabled={submitDisabled}
@@ -880,7 +1014,7 @@ export function AgentRegistrationForm() {
                       <span>Confirm in wallet…</span>
                     </>
                   ) : (
-                    "Register"
+                    "Register & publish"
                   )}
                 </button>
               </div>
