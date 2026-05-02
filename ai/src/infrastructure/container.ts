@@ -4,6 +4,8 @@ import { JsonFileStrategyStore } from "../adapters/outbound/JsonFileStrategyStor
 import { JsonFilePositionStore } from "../adapters/outbound/JsonFilePositionStore.js";
 import { JsonFileMarketRegistry } from "../adapters/outbound/JsonFileMarketRegistry.js";
 import { FileAuditLogger } from "../adapters/outbound/FileAuditLogger.js";
+import { ApiPositionStore } from "../adapters/outbound/ApiPositionStore.js";
+import { ApiAuditLogger } from "../adapters/outbound/ApiAuditLogger.js";
 import { StubWalletService } from "../adapters/outbound/StubWalletService.js";
 import { StubTradeExecutor } from "../adapters/outbound/StubTradeExecutor.js";
 import { StubSwapExecutor } from "../adapters/outbound/StubSwapExecutor.js";
@@ -22,14 +24,15 @@ export interface Container {
 
 /**
  * Wires all adapters, assembles the workflow, and returns the ready-to-use container.
- * Per-user isolation for the A2A path: WorkflowRunner creates per-user file paths.
- * Per-user isolation for the scheduler path: runDailyCycle() creates per-user instances.
+ * When API_URL is set, positions and audit logs are also pushed to the api/ module
+ * (dual-write: local file + api) so each module can be deployed independently.
  */
 export function buildContainer(): Container {
-  const profilesDir    = process.env.PROFILES_DIR         ?? resolve("data/profiles");
-  const positionsDir   = process.env.POSITIONS_DIR         ?? resolve("data/positions");
-  const auditDir       = process.env.AUDIT_DIR             ?? resolve("data/audit");
-  const registryFile   = process.env.MARKET_REGISTRY_FILE  ?? resolve("data/market_registry.json");
+  const profilesDir  = process.env.PROFILES_DIR         ?? resolve("data/profiles");
+  const positionsDir = process.env.POSITIONS_DIR         ?? resolve("data/positions");
+  const auditDir     = process.env.AUDIT_DIR             ?? resolve("data/audit");
+  const registryFile = process.env.MARKET_REGISTRY_FILE  ?? resolve("data/market_registry.json");
+  const apiUrl       = process.env.API_URL?.replace(/\/$/, "");
 
   const strategyStore  = new JsonFileStrategyStore(profilesDir);
   const marketSearch   = new GraphitiAdapter();
@@ -38,16 +41,14 @@ export function buildContainer(): Container {
   const tradeExecutor  = new StubTradeExecutor();
   const swapExecutor   = new StubSwapExecutor();
 
-  // A2A path: single shared workflow + per-request strategy loaded by WorkflowRunner
-  // Position store and audit logger for A2A use the ensName-keyed files too —
-  // WorkflowRunner.run() loads strategy first, then per-user deps are created below
-  const a2aPositionStore = new JsonFilePositionStore(resolve("data/positions/default.json"));
-  const a2aAuditLogger   = new FileAuditLogger(resolve("data/audit/default.jsonl"));
+  // A2A default path — a per-request strategy swaps in the real stores via WorkflowRunner
+  const defaultPositionStore = new JsonFilePositionStore(resolve("data/positions/default.json"));
+  const defaultAuditLogger   = new FileAuditLogger(resolve("data/audit/default.jsonl"));
 
   const workflow = createWorkflow({
     marketSearch,
-    positionStore:  a2aPositionStore,
-    auditLogger:    a2aAuditLogger,
+    positionStore: defaultPositionStore,
+    auditLogger:   defaultAuditLogger,
     marketRegistry,
     walletService,
     tradeExecutor,
@@ -67,6 +68,7 @@ export function buildContainer(): Container {
       swapExecutor,
       positionsDir,
       auditDir,
+      apiUrl,
     });
 
   return { app, runDailyCycle: dailyCycle };

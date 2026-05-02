@@ -1,17 +1,25 @@
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import { resolve, join } from "path";
+import { postProfile } from "../apiClient.js";
 
 const PROFILES_DIR = process.env.PROFILES_DIR ?? resolve("data/profiles");
 const STATE_FILE = resolve("data/ens_last_polled.txt");
 const PENDING_FILE = resolve("data/ens_pending.json");
 
-/** Saves a TradingStrategy to data/profiles/{ensName}.json. */
+/** Saves a TradingStrategy to data/profiles/{ensName}.json and api/. */
 export async function saveProfile(strategy: object & { ensName: string }): Promise<void> {
   await mkdir(PROFILES_DIR, { recursive: true });
   const filePath = join(PROFILES_DIR, `${strategy.ensName}.json`);
   await writeFile(filePath, JSON.stringify(strategy, null, 2));
   console.log(`[ens] profile saved → ${filePath}`);
+
+  try {
+    await postProfile(strategy.ensName, "registered", strategy);
+    console.log(`[ens] profile pushed → api`);
+  } catch (err) {
+    console.warn(`[ens] api profile push failed (non-fatal): ${String(err)}`);
+  }
 }
 
 /** Returns true if a profile file already exists for this ENS name. */
@@ -48,6 +56,12 @@ export async function addPending(ensName: string): Promise<void> {
     list.push(ensName);
     await writeFile(PENDING_FILE, JSON.stringify(list, null, 2));
     console.log(`[ens] queued for retry when metadata is published: ${ensName}`);
+  }
+  // Mark as pending in api/ too
+  try {
+    await postProfile(ensName, "pending", null);
+  } catch {
+    // non-fatal
   }
 }
 

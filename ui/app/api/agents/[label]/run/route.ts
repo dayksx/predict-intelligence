@@ -48,7 +48,10 @@ async function pollA2ATask(
   throw new Error("Timed out waiting for agent reply.");
 }
 
-async function sendChatToAgent(message: string): Promise<{
+async function sendChatToAgent(
+  message: string,
+  contextId?: string,
+): Promise<{
   reply: string;
   taskId?: string;
   source: "a2a" | "mock";
@@ -78,6 +81,7 @@ async function sendChatToAgent(message: string): Promise<{
         role: "ROLE_USER",
         parts: [{ text: message }],
       },
+      ...(contextId ? { metadata: { contextId } } : {}),
     }),
   });
 
@@ -158,15 +162,27 @@ export async function POST(
 
   try {
     if (mode === "alpha") {
+      const ensName = `${label}.agentic.eth`;
+      // 1. Enrich knowledge graph with user's alpha insight
       const ingested = await ingestAlphaToGraphiti(label, message);
+      // 2. Immediately trigger the AI workflow with this alpha as human context
+      let agentReply: string | undefined;
+      try {
+        const alphaPrompt = `[Alpha signal from user] ${message}`;
+        const chat = await sendChatToAgent(alphaPrompt, ensName);
+        agentReply = chat.reply;
+      } catch {
+        // non-fatal — alpha was already ingested to Graphiti
+      }
       return NextResponse.json({
         ok: ingested.ok,
         mode: "alpha",
         detail: ingested.detail,
+        reply: agentReply,
       });
     }
 
-    const chat = await sendChatToAgent(message);
+    const chat = await sendChatToAgent(message, `${label}.agentic.eth`);
     return NextResponse.json({
       ok: true,
       mode: "chat",

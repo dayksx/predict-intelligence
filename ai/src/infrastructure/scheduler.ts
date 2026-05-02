@@ -8,6 +8,8 @@ import type { IWalletService } from "../ports/outbound/IWalletService.js";
 import type { IMarketRegistry } from "../ports/outbound/IMarketRegistry.js";
 import { JsonFilePositionStore } from "../adapters/outbound/JsonFilePositionStore.js";
 import { FileAuditLogger } from "../adapters/outbound/FileAuditLogger.js";
+import { ApiPositionStore } from "../adapters/outbound/ApiPositionStore.js";
+import { ApiAuditLogger } from "../adapters/outbound/ApiAuditLogger.js";
 import { createWorkflow } from "../application/graph.js";
 
 interface SharedDeps {
@@ -19,11 +21,14 @@ interface SharedDeps {
   marketRegistry: IMarketRegistry;
   positionsDir: string;
   auditDir: string;
+  /** When set, positions and audit logs are dual-written to api/ SQLite. */
+  apiUrl?: string;
 }
 
 /**
  * Runs the full LangGraph pipeline once for every registered user.
- * Each user gets isolated position and audit log files.
+ * Each user gets isolated position and audit log adapters.
+ * When apiUrl is configured, all writes are dual-written (local file + api/).
  * Called once per day by the scheduler loop in main.ts.
  */
 export async function runDailyCycle(deps: SharedDeps): Promise<void> {
@@ -40,20 +45,27 @@ export async function runDailyCycle(deps: SharedDeps): Promise<void> {
     console.log(`[scheduler] ── running: ${strategy.ensName} (${strategy.agentName})`);
 
     try {
-      // Per-user position store and audit logger — isolated files per ENS name
-      const positionStore = new JsonFilePositionStore(
+      const filePositionStore = new JsonFilePositionStore(
         join(deps.positionsDir, `${strategy.ensName}.json`),
       );
-      const auditLogger = new FileAuditLogger(
+      const fileAuditLogger = new FileAuditLogger(
         join(deps.auditDir, `${strategy.ensName}.jsonl`),
       );
 
+      // Dual-write to api/ when configured, otherwise fall back to file-only
+      const positionStore = deps.apiUrl
+        ? new ApiPositionStore(deps.apiUrl, strategy.ensName, filePositionStore)
+        : filePositionStore;
+      const auditLogger = deps.apiUrl
+        ? new ApiAuditLogger(deps.apiUrl, strategy.ensName, fileAuditLogger)
+        : fileAuditLogger;
+
       const workflow = createWorkflow({
-        marketSearch: deps.marketSearch,
+        marketSearch:  deps.marketSearch,
         positionStore,
         auditLogger,
         tradeExecutor: deps.tradeExecutor,
-        swapExecutor: deps.swapExecutor,
+        swapExecutor:  deps.swapExecutor,
         walletService: deps.walletService,
         marketRegistry: deps.marketRegistry,
       });
