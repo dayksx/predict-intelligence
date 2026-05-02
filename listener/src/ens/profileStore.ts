@@ -55,6 +55,7 @@ export async function addPending(ensName: string): Promise<void> {
   const list = await readPending();
   if (!list.includes(ensName)) {
     list.push(ensName);
+    await mkdir(DATA_DIR, { recursive: true });
     await writeFile(PENDING_FILE, JSON.stringify(list, null, 2));
     console.log(`[ens] queued for retry when metadata is published: ${ensName}`);
   }
@@ -69,5 +70,6 @@ export async function addPending(ensName: string): Promise<void> {
 export async function removePending(ensName: string): Promise<void> {
   const list = await readPending();
   const updated = list.filter((n) => n !== ensName);
+  await mkdir(DATA_DIR, { recursive: true });
   await writeFile(PENDING_FILE, JSON.stringify(updated, null, 2));
 }
