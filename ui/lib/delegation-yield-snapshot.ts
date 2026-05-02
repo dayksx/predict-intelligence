@@ -4,6 +4,12 @@
  * (see `useMockDelegationYield` / `NEXT_PUBLIC_MOCK_AGENT_YIELD`).
  */
 
+/** Realized P&amp;L split by venue until your indexer supplies fills. */
+export interface ServicePnLEntry {
+  gainEth: number;
+  lossEth: number;
+}
+
 export interface DelegationYieldSnapshot {
   delegatedEth: number;
   realizedWinsEth: number;
@@ -12,6 +18,12 @@ export interface DelegationYieldSnapshot {
   netTradingEth: number;
   /** delegation + net P&L */
   bookEth: number;
+  /** Swap / perpetuals / prediction markets — gains & losses (ETH). */
+  servicePnL: {
+    swap: ServicePnLEntry;
+    perps: ServicePnLEntry;
+    predict: ServicePnLEntry;
+  };
 }
 
 function roundEth(n: number): number {
@@ -40,6 +52,36 @@ function mockWinsLossesFromDelegated(delegatedEth: number): {
   return { wins: 0.018, losses: 0.007 };
 }
 
+/** Split a total across three buckets with fixed ratios; last bucket absorbs rounding. */
+function splitEthThree(
+  total: number,
+  ratios: readonly [number, number, number],
+): [number, number, number] {
+  if (total <= 0) return [0, 0, 0];
+  const [r0, r1, r2] = ratios;
+  const s = r0 + r1 + r2;
+  const a = roundEth((total * r0) / s);
+  const b = roundEth((total * r1) / s);
+  const c = roundEth(total - a - b);
+  return [a, b, Math.max(0, c)];
+}
+
+function emptyServicePnL(): DelegationYieldSnapshot["servicePnL"] {
+  const z = { gainEth: 0, lossEth: 0 };
+  return { swap: { ...z }, perps: { ...z }, predict: { ...z } };
+}
+
+/** Mock venue split: swap-heavy, then perps, then prediction markets. */
+function mockServicePnL(wins: number, losses: number): DelegationYieldSnapshot["servicePnL"] {
+  const wg = splitEthThree(wins, [0.42, 0.33, 0.25]);
+  const wl = splitEthThree(losses, [0.38, 0.35, 0.27]);
+  return {
+    swap: { gainEth: wg[0], lossEth: wl[0] },
+    perps: { gainEth: wg[1], lossEth: wl[1] },
+    predict: { gainEth: wg[2], lossEth: wl[2] },
+  };
+}
+
 /** Parse ETH string from ENS; returns null if empty/invalid. */
 export function parseDelegatedEthFromEns(
   raw: string | null | undefined,
@@ -65,12 +107,18 @@ export function getDelegationYieldSnapshot(
   }
 
   const net = roundEth(wins - losses);
+  const servicePnL =
+    useMockDelegationYield() && (wins > 0 || losses > 0)
+      ? mockServicePnL(wins, losses)
+      : emptyServicePnL();
+
   return {
     delegatedEth: delegated,
     realizedWinsEth: wins,
     realizedLossesEth: losses,
     netTradingEth: net,
     bookEth: roundEth(delegated + net),
+    servicePnL,
   };
 }
 

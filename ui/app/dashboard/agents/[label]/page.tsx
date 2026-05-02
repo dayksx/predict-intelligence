@@ -134,8 +134,8 @@ export default function AgentActivitiesPage() {
                 </span>
               </div>
               <p className="mt-3 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
-                P&amp;L spans the width below; chart and chat sit underneath, then
-                activity feeds.
+                Summary metrics and venue chart share the top band; the outcome
+                diagram sits in a narrow column beside chat, then activity feeds.
               </p>
             </div>
           </div>
@@ -146,11 +146,7 @@ export default function AgentActivitiesPage() {
         <AgentDelegationMetricsStrip ensDelegatedAmount={delegatedAmountEns} />
 
         <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch lg:gap-5">
-          <div className="w-full shrink-0 lg:max-w-[min(100%,22.5rem)] xl:max-w-[24rem]">
-            <AgentDelegationOutcomeDiagramPanel
-              ensDelegatedAmount={delegatedAmountEns}
-            />
-          </div>
+    
           <div className="min-w-0 flex-1">
             <AgentLiveSidebar key={label} label={label} />
           </div>
