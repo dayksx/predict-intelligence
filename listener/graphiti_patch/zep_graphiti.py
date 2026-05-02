@@ -3,6 +3,20 @@ import os
 from typing import Annotated
 
 from fastapi import Depends, HTTPException
+
+# ── Patch Neo4jDriver at CLASS level so ALL instances (including background jobs)
+# use the correct Aura database name instead of the hardcoded DEFAULT_DATABASE='neo4j'
+_NEO4J_DATABASE = os.environ.get('NEO4J_DATABASE', 'neo4j')
+try:
+    from graphiti_core.driver.neo4j_driver import Neo4jDriver as _GraphitiNeo4jDriver
+    _orig_execute = _GraphitiNeo4jDriver.execute_query
+    async def _patched_execute(self, cypher_query_, **kwargs):
+        kwargs['database_'] = _NEO4J_DATABASE
+        return await _orig_execute(self, cypher_query_, **kwargs)
+    _GraphitiNeo4jDriver.execute_query = _patched_execute
+    logging.getLogger(__name__).info(f'[graphiti] class-level Neo4jDriver patched → database={_NEO4J_DATABASE}')
+except Exception as _e:
+    logging.getLogger(__name__).warning(f'[graphiti] class-level patch failed: {_e}')
 from graphiti_core import Graphiti  # type: ignore
 from graphiti_core.edges import EntityEdge  # type: ignore
 from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig  # type: ignore
@@ -88,15 +102,6 @@ async def get_graphiti(settings: ZepEnvDep):
         embedder=embedder,
     )
 
-    # Monkey-patch execute_query to inject the correct database_ for every call.
-    neo4j_database = os.environ.get('NEO4J_DATABASE', 'neo4j')
-    if hasattr(client, 'driver'):
-        _original = client.driver.execute_query
-        async def _patched(cypher_query_, **kwargs):
-            kwargs['database_'] = neo4j_database  # force override DEFAULT_DATABASE='neo4j'
-            return await _original(cypher_query_, **kwargs)
-        client.driver.execute_query = _patched
-
     if settings.openai_base_url is not None:
         client.llm_client.config.base_url = settings.openai_base_url
     if settings.openai_api_key is not None:
@@ -117,15 +122,7 @@ async def initialize_graphiti(settings: ZepEnvDep):
         user=settings.neo4j_user,
         password=settings.neo4j_password,
     )
-    # Monkey-patch execute_query to inject the correct database_ for every call.
-    # graphiti_core defaults to 'neo4j' but Aura Free uses the instance ID as the db name.
-    if hasattr(client, 'driver'):
-        _original = client.driver.execute_query
-        async def _patched(cypher_query_, **kwargs):
-            kwargs['database_'] = neo4j_database  # force override DEFAULT_DATABASE='neo4j'
-            return await _original(cypher_query_, **kwargs)
-        client.driver.execute_query = _patched
-        logger.info(f'[graphiti] patched execute_query → database={neo4j_database}')
+    logger.info(f'[graphiti] initializing with database={neo4j_database}')
     await client.build_indices_and_constraints()
 
 
