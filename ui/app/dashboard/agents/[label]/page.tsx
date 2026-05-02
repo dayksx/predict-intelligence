@@ -11,11 +11,13 @@ import {
   triggerKindPresentation,
 } from "@/lib/agent-activities";
 import { isApiConfigured } from "@/lib/api-client";
-import { usePercieve, useReason, useAct, useProfile } from "@/hooks/useAgentFeed";
 import {
-  AgentDelegationMetricsStrip,
-  AgentDelegationOutcomeDiagramPanel,
-} from "@/components/agent/AgentDelegationYieldHero";
+  usePercieve,
+  useReason,
+  useAct,
+  useProfile,
+} from "@/hooks/useAgentFeed";
+import { AgentDelegationMetricsStrip } from "@/components/agent/AgentDelegationYieldHero";
 import { AgentLiveSidebar } from "@/components/agent/AgentLiveSidebar";
 import { useEnsAvatar, useEnsText } from "wagmi";
 import { sepolia } from "wagmi/chains";
@@ -65,17 +67,20 @@ export default function AgentActivitiesPage() {
   const apiConfigured = isApiConfigured();
 
   // Live API data
-  const perceiveQ  = usePercieve();
-  const reasonQ    = useReason(label);
-  const actQ       = useAct(label);
-  const profileQ   = useProfile(label);
+  const perceiveQ = usePercieve();
+  const reasonQ = useReason(label);
+  const actQ = useAct(label);
+  const profileQ = useProfile(label);
 
   // Fall back to mock when API is not configured
   const mockFeed = valid ? defaultAgentActivityFeed(label) : null;
 
-  const percieveSources = perceiveQ.data ?? (apiConfigured ? [] : mockFeed?.perceive.sources ?? []);
-  const reasonRuns      = reasonQ.data   ?? (apiConfigured ? [] : mockFeed?.reason.runs ?? []);
-  const actActions      = actQ.data      ?? (apiConfigured ? [] : mockFeed?.triggered.actions ?? []);
+  const percieveSources =
+    perceiveQ.data ?? (apiConfigured ? [] : (mockFeed?.perceive.sources ?? []));
+  const reasonRuns =
+    reasonQ.data ?? (apiConfigured ? [] : (mockFeed?.reason.runs ?? []));
+  const actActions =
+    actQ.data ?? (apiConfigured ? [] : (mockFeed?.triggered.actions ?? []));
   const { data: avatar } = useEnsAvatar({
     name: fullName,
     chainId,
@@ -106,18 +111,17 @@ export default function AgentActivitiesPage() {
     query: { enabled },
   });
 
-  const { data: avatar } = useEnsAvatar({ name: fullName, chainId, query: { enabled } });
-  const { data: agentNameRecord } = useEnsText({ name: fullName, key: AGENTIC_ENS_TEXT_KEYS.agentName, chainId, query: { enabled } });
-  const { data: focusDomain }     = useEnsText({ name: fullName, key: AGENTIC_ENS_TEXT_KEYS.focusDomain, chainId, query: { enabled } });
-  const { data: thesisPrompt }    = useEnsText({ name: fullName, key: AGENTIC_ENS_TEXT_KEYS.thesisPrompt, chainId, query: { enabled } });
-
-  const displayName = agentNameRecord?.trim() || (valid ? label : "Unknown agent");
+  const displayName =
+    agentNameRecord?.trim() || (valid ? label : "Unknown agent");
 
   if (!valid) {
     return (
       <div className="flex min-h-full flex-1 flex-col bg-zinc-50 font-sans dark:bg-black">
         <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-6 sm:px-6">
-          <Link href="/dashboard" className="text-sm font-medium text-sky-600 hover:underline dark:text-sky-400">
+          <Link
+            href="/dashboard"
+            className="text-sm font-medium text-sky-600 hover:underline dark:text-sky-400"
+          >
             ← Dashboard
           </Link>
           <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200">
@@ -131,33 +135,38 @@ export default function AgentActivitiesPage() {
 
   // Profile status banner
   const profileStatus = profileQ.data?.status;
-  const profileBanner =
-    !apiConfigured ? (
-      <p className="mt-4 rounded-lg border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-xs leading-relaxed text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-        Perceive / Reason / Act sections show illustrative sample data. Set{" "}
-        <span className="font-mono">NEXT_PUBLIC_API_URL</span> to connect to live data.
-        Set <span className="font-mono">AGENT_A2A_URL</span> and{" "}
-        <span className="font-mono">GRAPHITI_URL</span> for live chat and alpha ingestion.
-      </p>
-    ) : profileStatus === "pending" ? (
-      <p className="mt-4 rounded-lg border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-xs leading-relaxed text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-        Registration detected — waiting for metadata transaction to confirm on Sepolia.
-      </p>
-    ) : profileStatus === "not_found" ? (
-      <p className="mt-4 rounded-lg border border-rose-200/80 bg-rose-50/90 px-3 py-2 text-xs leading-relaxed text-rose-950 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200">
-        No profile found for <span className="font-mono">{fullName}</span>. Register via the home page first.
-      </p>
-    ) : profileStatus === "registered" ? (
-      <p className="mt-4 rounded-lg border border-emerald-200/80 bg-emerald-50/90 px-3 py-2 text-xs leading-relaxed text-emerald-950 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
-        Profile active — showing live data from the agent pipeline.
-      </p>
-    ) : null;
+  const profileBanner = !apiConfigured ? (
+    <p className="mt-4 rounded-lg border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-xs leading-relaxed text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+      Perceive / Reason / Act sections show illustrative sample data. Set{" "}
+      <span className="font-mono">NEXT_PUBLIC_API_URL</span> to connect to live
+      data. Set <span className="font-mono">AGENT_A2A_URL</span> and{" "}
+      <span className="font-mono">GRAPHITI_URL</span> for live chat and alpha
+      ingestion.
+    </p>
+  ) : profileStatus === "pending" ? (
+    <p className="mt-4 rounded-lg border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-xs leading-relaxed text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+      Registration detected — waiting for metadata transaction to confirm on
+      Sepolia.
+    </p>
+  ) : profileStatus === "not_found" ? (
+    <p className="mt-4 rounded-lg border border-rose-200/80 bg-rose-50/90 px-3 py-2 text-xs leading-relaxed text-rose-950 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200">
+      No profile found for <span className="font-mono">{fullName}</span>.
+      Register via the home page first.
+    </p>
+  ) : profileStatus === "registered" ? (
+    <p className="mt-4 rounded-lg border border-emerald-200/80 bg-emerald-50/90 px-3 py-2 text-xs leading-relaxed text-emerald-950 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
+      Profile active — showing live data from the agent pipeline.
+    </p>
+  ) : null;
 
   return (
     <div className="flex min-h-full flex-1 flex-col bg-zinc-50 font-sans dark:bg-black">
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-5 sm:px-6 sm:py-5">
         <div>
-          <Link href="/dashboard" className="text-sm font-medium text-sky-600 hover:underline dark:text-sky-400">
+          <Link
+            href="/dashboard"
+            className="text-sm font-medium text-sky-600 hover:underline dark:text-sky-400"
+          >
             ← Dashboard
           </Link>
 
@@ -165,7 +174,11 @@ export default function AgentActivitiesPage() {
             <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-sky-200 bg-zinc-100 ring-2 ring-sky-500/15 dark:border-sky-800 dark:bg-zinc-800 dark:ring-sky-400/10">
               {avatar ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={avatar} alt="" className="h-full w-full object-cover" />
+                <img
+                  src={avatar}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
               ) : (
                 <span className="text-lg font-bold text-zinc-500 dark:text-zinc-400">
                   {displayName.slice(0, 2).toUpperCase()}
@@ -192,19 +205,18 @@ export default function AgentActivitiesPage() {
               </div>
               <p className="mt-3 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
                 Summary metrics and venue chart share the top band; the outcome
-                diagram sits in a narrow column beside chat, then activity feeds.
+                diagram sits in a narrow column beside chat, then activity
+                feeds.
               </p>
             </div>
           </div>
 
           {profileBanner}
-
         </div>
 
         <AgentDelegationMetricsStrip ensDelegatedAmount={delegatedAmountEns} />
 
         <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch lg:gap-5">
-    
           <div className="min-w-0 flex-1">
             <AgentLiveSidebar key={label} label={label} />
           </div>
@@ -227,17 +239,26 @@ export default function AgentActivitiesPage() {
               Perceive
             </h2>
             <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              Sources this agent watches: cadence, last successful fetch, and the resource URI.
+              Sources this agent watches: cadence, last successful fetch, and
+              the resource URI.
             </p>
 
             <div className="mt-5 overflow-x-auto rounded-xl border border-emerald-100 dark:border-emerald-900/35">
               <table className="w-full min-w-[640px] border-collapse text-left text-sm">
                 <thead>
                   <tr className="border-b border-emerald-100 bg-emerald-50/90 dark:border-emerald-900/40 dark:bg-emerald-950/50">
-                    <th className="px-4 py-3 font-semibold text-zinc-700 dark:text-zinc-300">Source</th>
-                    <th className="px-4 py-3 font-semibold text-zinc-700 dark:text-zinc-300">Watch frequency</th>
-                    <th className="px-4 py-3 font-semibold text-zinc-700 dark:text-zinc-300">Last fetch</th>
-                    <th className="px-4 py-3 font-semibold text-zinc-700 dark:text-zinc-300">Last fetch URI</th>
+                    <th className="px-4 py-3 font-semibold text-zinc-700 dark:text-zinc-300">
+                      Source
+                    </th>
+                    <th className="px-4 py-3 font-semibold text-zinc-700 dark:text-zinc-300">
+                      Watch frequency
+                    </th>
+                    <th className="px-4 py-3 font-semibold text-zinc-700 dark:text-zinc-300">
+                      Last fetch
+                    </th>
+                    <th className="px-4 py-3 font-semibold text-zinc-700 dark:text-zinc-300">
+                      Last fetch URI
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -254,9 +275,16 @@ export default function AgentActivitiesPage() {
                     </tr>
                   ) : (
                     percieveSources.map((s) => (
-                      <tr key={s.id} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
-                        <td className="px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">{s.sourceName}</td>
-                        <td className="px-4 py-3 text-zinc-700 dark:text-zinc-300">{s.watchFrequency}</td>
+                      <tr
+                        key={s.id}
+                        className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
+                      >
+                        <td className="px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">
+                          {s.sourceName}
+                        </td>
+                        <td className="px-4 py-3 text-zinc-700 dark:text-zinc-300">
+                          {s.watchFrequency}
+                        </td>
                         <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-zinc-600 dark:text-zinc-400">
                           {formatActivityDateTime(s.lastFetchAt)}
                         </td>
@@ -294,7 +322,8 @@ export default function AgentActivitiesPage() {
               Reason
             </h2>
             <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              Policy from your ENS records (area of focus and thesis prompt), plus recent decision summaries.
+              Policy from your ENS records (area of focus and thesis prompt),
+              plus recent decision summaries.
             </p>
 
             <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -350,7 +379,9 @@ export default function AgentActivitiesPage() {
                       ))}
                     </div>
                     <p className="mt-3 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">
-                      <span className="font-medium text-zinc-700 dark:text-zinc-300">Prompt alignment: </span>
+                      <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                        Prompt alignment:{" "}
+                      </span>
                       {r.promptAlignment}
                     </p>
                   </li>
@@ -375,7 +406,8 @@ export default function AgentActivitiesPage() {
               Triggered
             </h2>
             <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              Actions emitted after reasoning: swaps, prediction-market moves, on-chain txs.
+              Actions emitted after reasoning: swaps, prediction-market moves,
+              on-chain txs.
             </p>
 
             {actQ.isLoading ? (
@@ -396,16 +428,22 @@ export default function AgentActivitiesPage() {
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${kind.pillClass}`}>
+                          <span
+                            className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${kind.pillClass}`}
+                          >
                             {kind.label}
                           </span>
                           <span className="font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
                             {formatActivityDateTime(t.occurredAt)}
                           </span>
                         </div>
-                        <p className="mt-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">{t.label}</p>
+                        <p className="mt-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                          {t.label}
+                        </p>
                         {t.extraDetail ? (
-                          <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">{t.extraDetail}</p>
+                          <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                            {t.extraDetail}
+                          </p>
                         ) : null}
                       </div>
                       <div className="shrink-0 sm:pt-1">
