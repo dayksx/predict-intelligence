@@ -4,19 +4,6 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException
 
-# ── Patch Neo4jDriver at CLASS level so ALL instances (including background jobs)
-# use the correct Aura database name instead of the hardcoded DEFAULT_DATABASE='neo4j'
-_NEO4J_DATABASE = os.environ.get('NEO4J_DATABASE', 'neo4j')
-try:
-    from graphiti_core.driver.neo4j_driver import Neo4jDriver as _GraphitiNeo4jDriver
-    _orig_execute = _GraphitiNeo4jDriver.execute_query
-    async def _patched_execute(self, cypher_query_, **kwargs):
-        kwargs['database_'] = _NEO4J_DATABASE
-        return await _orig_execute(self, cypher_query_, **kwargs)
-    _GraphitiNeo4jDriver.execute_query = _patched_execute
-    logging.getLogger(__name__).info(f'[graphiti] class-level Neo4jDriver patched → database={_NEO4J_DATABASE}')
-except Exception as _e:
-    logging.getLogger(__name__).warning(f'[graphiti] class-level patch failed: {_e}')
 from graphiti_core import Graphiti  # type: ignore
 from graphiti_core.edges import EntityEdge  # type: ignore
 from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig  # type: ignore
