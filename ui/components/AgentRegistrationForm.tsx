@@ -575,6 +575,23 @@ export function AgentRegistrationForm() {
           : null;
         if (receipt?.status === "success" || !publicClient) {
           const fullName = `${label}.agentic.eth` as const;
+
+          // Notify the API of the selected agent profile immediately after step 1,
+          // so the listener can read the agentId from the API when it processes the ENS event.
+          const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+          if (apiUrl) {
+            const selectedAgent = MARKETPLACE_AGENTS.find((a) => a.id === selectedAgentId);
+            fetch(`${apiUrl}/ingest/profiles`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                ensName: fullName,
+                status: "pending",
+                agentId: selectedAgentId,
+                profile: { agentId: selectedAgentId, agentName: selectedAgent?.name ?? selectedAgentId },
+              }),
+            }).catch(() => {/* non-blocking — best effort */});
+          }
           let metadataTx: `0x${string}` | undefined;
           let metadataFailedNote: string | undefined;
 

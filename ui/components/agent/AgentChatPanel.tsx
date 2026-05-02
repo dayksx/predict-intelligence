@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { LivePhase } from "@/lib/agent-live-messages";
 
 type ChatMode = "chat" | "alpha";
@@ -12,6 +13,7 @@ export function AgentChatPanel({
   label: string;
   onActivity: (phase: LivePhase, message: string) => void;
 }) {
+  const queryClient = useQueryClient();
   const [mode, setMode] = useState<ChatMode>("chat");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<
@@ -68,17 +70,30 @@ export function AgentChatPanel({
           { role: "assistant", text: detail, at: new Date().toISOString() },
         ]);
         onActivity("system", detail);
+
+        // Show agent reply if the workflow also ran
+        if (typeof data.reply === "string" && data.reply) {
+          setMessages((m) => [
+            ...m,
+            { role: "assistant", text: data.reply as string, at: new Date().toISOString() },
+          ]);
+          onActivity("act", "Agent analysed your alpha — check Act table for positions.");
+        }
       } else {
-        const reply =
-          typeof data.reply === "string"
-            ? data.reply
-            : JSON.stringify(data);
-        const source =
-          data.source === "a2a"
-            ? " (live agent)"
-            : data.source === "mock"
-              ? " (demo — configure AGENT_A2A_URL)"
-              : "";
+      const reply =
+        typeof data.reply === "string"
+          ? data.reply
+          : JSON.stringify(data);
+      const source =
+        data.source === "a2a"
+          ? " (live agent)"
+          : data.source === "mock"
+            ? " (demo — configure AGENT_A2A_URL)"
+            : "";
+
+      const noDecisions = reply.toLowerCase().includes("no actionable decisions");
+
+      if (!noDecisions) {
         setMessages((m) => [
           ...m,
           {
@@ -87,11 +102,15 @@ export function AgentChatPanel({
             at: new Date().toISOString(),
           },
         ]);
-        onActivity(
-          "reason",
-          "Agent reply received — see conversation below.",
-        );
+        onActivity("reason", "Agent reply received — see conversation below.");
+      } else {
+        onActivity("system", `No trade taken — market conditions didn't meet your confidence threshold.`);
       }
+      }
+
+      // Refresh Reason / Act tables so new entries appear immediately
+      void queryClient.invalidateQueries({ queryKey: ["reason", label] });
+      void queryClient.invalidateQueries({ queryKey: ["act", label] });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Request failed";
       setError(msg);

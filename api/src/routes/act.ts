@@ -1,5 +1,5 @@
 import { Router } from "express";
-import db from "../db.js";
+import { getDb } from "../db.js";
 
 const router = Router();
 
@@ -22,7 +22,6 @@ function actionToKind(action: string): TriggerKind {
  *         name: label
  *         required: true
  *         schema: { type: string }
- *         description: ENS subdomain label (e.g. "alice" for alice.agentic.eth)
  *     responses:
  *       200:
  *         description: List of triggered actions
@@ -39,18 +38,18 @@ function actionToKind(action: string): TriggerKind {
 router.get("/:label", (req, res) => {
   const ensName = `${req.params.label}.agentic.eth`;
 
-  const rows = db
-    .prepare(
-      `SELECT run_id, data_json, timestamp
-       FROM audit_log
-       WHERE ens_name = ? AND event = 'action_executed'
-       ORDER BY id DESC
-       LIMIT 50`,
-    )
-    .all(ensName) as Array<{ run_id: string; data_json: string; timestamp: string }>;
+  const result = getDb().exec(
+    `SELECT run_id, data_json, timestamp
+     FROM audit_log
+     WHERE ens_name = ? AND event = 'action_executed'
+     ORDER BY id DESC LIMIT 50`,
+    [ensName],
+  );
 
-  const actions = rows.map((row) => {
-    const data = JSON.parse(row.data_json ?? "{}") as {
+  const rows = (result[0]?.values ?? []) as Array<[string, string, string]>;
+
+  const actions = rows.map(([run_id, data_json, timestamp]) => {
+    const data = JSON.parse(data_json ?? "{}") as {
       decision?: {
         action?: string;
         marketId?: string;
@@ -69,9 +68,9 @@ router.get("/:label", (req, res) => {
     };
 
     const decision = data.decision ?? {};
-    const result = data.result ?? {};
+    const result2 = data.result ?? {};
     const action = decision.action ?? "other";
-    const dryRun = result.dryRun ?? true;
+    const dryRun = result2.dryRun ?? true;
 
     let label = "Agent action";
     if (action === "trade") {
@@ -82,17 +81,17 @@ router.get("/:label", (req, res) => {
       label = `${decision.tokenIn ?? "?"} → ${decision.tokenOut ?? "?"} · $${decision.sizeUsdc ?? "?"} USDC`;
     }
 
-    const txHash = result.txHash as string | undefined;
+    const txHash = result2.txHash as string | undefined;
 
     return {
-      id: `trg-${result.decisionId ?? row.timestamp}`,
+      id: `trg-${result2.decisionId ?? timestamp}`,
       kind: actionToKind(action),
       label,
-      occurredAt: row.timestamp,
+      occurredAt: timestamp,
       primaryUrl: txHash ? `https://sepolia.etherscan.io/tx/${txHash}` : undefined,
       primaryUrlLabel: txHash ? "Sepolia Etherscan" : undefined,
       extraDetail:
-        [dryRun ? "Dry run" : null, result.success === false ? "Failed" : null, decision.reasoning ?? null]
+        [dryRun ? "Dry run" : null, result2.success === false ? "Failed" : null, decision.reasoning ?? null]
           .filter(Boolean)
           .join(" · ") || undefined,
     };

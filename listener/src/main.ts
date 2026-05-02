@@ -8,6 +8,7 @@ import { fetchNewSubdomains } from "./ens/subgraphPoller.js";
 import { fetchTextRecords } from "./ens/textRecordFetcher.js";
 import { buildTradingStrategy } from "./ens/profileBuilder.js";
 import { saveProfile, profileExists, readLastPolled, writeLastPolled, readPending, addPending, removePending } from "./ens/profileStore.js";
+import { fetchAgentId } from "./apiClient.js";
 
 /** Fetches markets and ingests them into Graphiti + the local market registry. */
 async function marketTick(): Promise<void> {
@@ -47,12 +48,11 @@ async function ensTick(): Promise<void> {
     for (const ensName of pending) {
       const records = await fetchTextRecords(ensName);
       if (!records) continue; // still not ready
-      const domain = ensName.split(".")[0];
-      // walletAddress unknown at retry time — re-use owner address if available
-      const strategy = buildTradingStrategy(ensName, "", records);
+      const agentIdFromApi = await fetchAgentId(ensName);
+      const strategy = buildTradingStrategy(ensName, "", records, agentIdFromApi);
       await saveProfile(strategy);
       await removePending(ensName);
-      console.log(`[ens] retry succeeded: ${ensName} | focus:${strategy.focusDomain}`);
+      console.log(`[ens] retry succeeded: ${ensName} | focus:${strategy.focusDomain} | agentId:${strategy.agentId}`);
     }
   }
 
@@ -81,7 +81,8 @@ async function ensTick(): Promise<void> {
       continue;
     }
 
-    const strategy = buildTradingStrategy(domain.name, domain.owner.id, records);
+    const agentIdFromApi = await fetchAgentId(domain.name);
+    const strategy = buildTradingStrategy(domain.name, domain.owner.id, records, agentIdFromApi);
     await saveProfile(strategy);
 
     console.log(

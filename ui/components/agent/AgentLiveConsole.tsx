@@ -18,7 +18,7 @@ function phaseClass(phase: LiveFeedLine["phase"]): string {
 function formatTime(iso: string): string {
   try {
     const d = new Date(iso);
-    return d.toLocaleTimeString(undefined, {
+    return d.toLocaleTimeString("en-GB", {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
@@ -70,7 +70,7 @@ export function AgentLiveConsole({ lines }: { lines: LiveFeedLine[] }) {
                 >
                   {phaseLabel(line.phase)}
                 </span>
-                <span className="text-zinc-500">{formatTime(line.at)}</span>
+                <span className="text-zinc-500" suppressHydrationWarning>{formatTime(line.at)}</span>
               </div>
               <p className="mt-1.5 text-zinc-200">{line.message}</p>
             </div>

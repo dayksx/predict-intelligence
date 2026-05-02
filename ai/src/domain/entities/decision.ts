@@ -7,8 +7,8 @@ export const DecisionZ = z.object({
   positionId: z.string().nullable(),
   direction: z.enum(["YES", "NO"]).nullable(),
   sizeUsdc: z.number().nullable(),
-  tokenIn: z.string().nullable(),
-  tokenOut: z.string().nullable(),
+  tokenIn: z.string().nullable().default(null),
+  tokenOut: z.string().nullable().default(null),
   // Polymarket CLOB-specific fields
   clobTokenId: z.string().nullable().default(null),
   negRisk: z.boolean().nullable().default(null),
@@ -16,7 +16,7 @@ export const DecisionZ = z.object({
   noPrice: z.number().nullable().default(null),
   sell: z.boolean().nullable().default(null),
   sources: z.array(z.string()).default([]),
-  confidence: z.number(),
+  confidence: z.number().nullable().default(0.5),
   reasoning: z.string(),
 });
 

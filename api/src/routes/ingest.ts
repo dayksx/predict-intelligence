@@ -1,5 +1,5 @@
 import { Router } from "express";
-import db from "../db.js";
+import { getDb, persist } from "../db.js";
 
 const router = Router();
 
@@ -21,16 +21,6 @@ const router = Router();
  *                 type: array
  *                 items:
  *                   type: object
- *                   required: [market_id, title, domain, updated_at]
- *                   properties:
- *                     market_id: { type: string }
- *                     title: { type: string }
- *                     clob_yes_token_id: { type: string }
- *                     clob_no_token_id: { type: string }
- *                     neg_risk: { type: boolean }
- *                     resolution_date: { type: string }
- *                     domain: { type: string }
- *                     updated_at: { type: string, format: date-time }
  *     responses:
  *       200:
  *         description: Markets upserted
@@ -47,9 +37,10 @@ router.post("/markets", (req, res) => {
     return res.status(400).json({ error: "markets array required" });
   }
 
-  const upsert = db.prepare(`
+  const db = getDb();
+  const stmt = db.prepare(`
     INSERT INTO market_registry (market_id, title, clob_yes_token_id, clob_no_token_id, neg_risk, resolution_date, domain, updated_at)
-    VALUES (@market_id, @title, @clob_yes_token_id, @clob_no_token_id, @neg_risk, @resolution_date, @domain, @updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(market_id) DO UPDATE SET
       title = excluded.title,
       clob_yes_token_id = excluded.clob_yes_token_id,
@@ -60,13 +51,21 @@ router.post("/markets", (req, res) => {
       updated_at = excluded.updated_at
   `);
 
-  const batchUpsert = db.transaction((rows: Array<Record<string, unknown>>) => {
-    for (const m of rows) {
-      upsert.run({ ...m, neg_risk: m.neg_risk ? 1 : 0 });
-    }
-  });
+  for (const m of markets) {
+    stmt.run([
+      String(m.market_id ?? ""),
+      String(m.title ?? ""),
+      m.clob_yes_token_id != null ? String(m.clob_yes_token_id) : null,
+      m.clob_no_token_id  != null ? String(m.clob_no_token_id)  : null,
+      m.neg_risk ? 1 : 0,
+      m.resolution_date  != null ? String(m.resolution_date)  : null,
+      m.domain           != null ? String(m.domain)           : null,
+      String(m.updated_at ?? new Date().toISOString()),
+    ]);
+  }
+  stmt.free();
+  persist(db);
 
-  batchUpsert(markets);
   res.json({ upserted: markets.length });
 });
 
@@ -84,31 +83,36 @@ router.post("/markets", (req, res) => {
  *             type: object
  *             required: [ensName, profile]
  *             properties:
- *               ensName: { type: string, example: "alice.agentic.eth" }
- *               status: { type: string, enum: [registered, pending], default: registered }
- *               profile: { type: object, description: TradingStrategy JSON }
+ *               ensName: { type: string }
+ *               status: { type: string, enum: [registered, pending] }
+ *               profile: { type: object }
  *     responses:
  *       200:
  *         description: Profile upserted
  */
 router.post("/profiles", (req, res) => {
-  const { ensName, status = "registered", profile } = req.body as {
+  const { ensName, status = "registered", profile, agentId } = req.body as {
     ensName?: string;
     status?: string;
     profile?: unknown;
+    agentId?: string;
   };
 
   if (!ensName) return res.status(400).json({ error: "ensName required" });
 
+  const db = getDb();
   const now = new Date().toISOString();
-  db.prepare(`
-    INSERT INTO profiles (ens_name, status, data_json, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(ens_name) DO UPDATE SET
-      status = excluded.status,
-      data_json = excluded.data_json,
-      updated_at = excluded.updated_at
-  `).run(ensName, status, JSON.stringify(profile ?? null), now, now);
+  db.run(
+    `INSERT INTO profiles (ens_name, status, agent_id, data_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(ens_name) DO UPDATE SET
+       status = excluded.status,
+       agent_id = COALESCE(excluded.agent_id, profiles.agent_id),
+       data_json = excluded.data_json,
+       updated_at = excluded.updated_at`,
+    [ensName, status, agentId ?? null, JSON.stringify(profile ?? null), now, now],
+  );
+  persist(db);
 
   res.json({ ok: true, ensName, status });
 });
@@ -149,10 +153,12 @@ router.post("/audit", (req, res) => {
     return res.status(400).json({ error: "ensName and event required" });
   }
 
-  db.prepare(`
-    INSERT INTO audit_log (ens_name, run_id, event, data_json, timestamp)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(ensName, runId ?? null, event, JSON.stringify(data ?? null), timestamp ?? new Date().toISOString());
+  const db = getDb();
+  db.run(
+    `INSERT INTO audit_log (ens_name, run_id, event, data_json, timestamp) VALUES (?, ?, ?, ?, ?)`,
+    [ensName, runId ?? null, event, JSON.stringify(data ?? null), timestamp ?? new Date().toISOString()],
+  );
+  persist(db);
 
   res.json({ ok: true });
 });
@@ -175,9 +181,6 @@ router.post("/audit", (req, res) => {
  *               position:
  *                 type: object
  *                 required: [id, status]
- *                 properties:
- *                   id: { type: string }
- *                   status: { type: string, enum: [open, closed] }
  *     responses:
  *       200:
  *         description: Position upserted
@@ -192,22 +195,25 @@ router.post("/positions", (req, res) => {
     return res.status(400).json({ error: "ensName and position.id required" });
   }
 
+  const db = getDb();
   const now = new Date().toISOString();
-  db.prepare(`
-    INSERT INTO positions (position_id, ens_name, status, data_json, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(position_id) DO UPDATE SET
-      status = excluded.status,
-      data_json = excluded.data_json,
-      updated_at = excluded.updated_at
-  `).run(
-    position.id as string,
-    ensName,
-    (position.status as string) ?? "open",
-    JSON.stringify(position),
-    now,
-    now,
+  db.run(
+    `INSERT INTO positions (position_id, ens_name, status, data_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(position_id) DO UPDATE SET
+       status = excluded.status,
+       data_json = excluded.data_json,
+       updated_at = excluded.updated_at`,
+    [
+      position.id as string,
+      ensName,
+      (position.status as string) ?? "open",
+      JSON.stringify(position),
+      now,
+      now,
+    ],
   );
+  persist(db);
 
   res.json({ ok: true });
 });
