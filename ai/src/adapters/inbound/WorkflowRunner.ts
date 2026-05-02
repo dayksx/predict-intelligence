@@ -1,37 +1,66 @@
 import { HumanMessage } from "@langchain/core/messages";
-import type { AIMessage } from "@langchain/core/messages";
 import type { IWorkflowRunner, WorkflowRunOptions, WorkflowResult } from "../../ports/inbound/IWorkflowRunner.js";
-import { createAgent } from "../../application/graph.js";
+import type { IStrategyStore } from "../../ports/outbound/IStrategyStore.js";
+import type { Decision } from "../../domain/entities/decision.js";
+import type { TradingStrategy } from "../../domain/entities/strategy.js";
+
+/** Minimal structural interface for the compiled LangGraph workflow.
+ *  Defined here so this adapter doesn't need to import from the application layer. */
+interface InvokableWorkflow {
+  invoke(
+    input: Record<string, unknown>,
+    options?: { configurable?: Record<string, unknown> },
+  ): Promise<{ summary?: string; validatedDecisions?: Decision[] }>;
+}
 
 /**
- * Inbound adapter — implements IWorkflowRunner by running the LangGraph agent.
- * Sits between the A2A server (primary driver) and the agent core.
+ * Inbound adapter — implements IWorkflowRunner by invoking the LangGraph pipeline.
+ * Loads the per-user TradingStrategy from the store using contextId (ENS name),
+ * then injects it as initial state before running the workflow.
  */
 export class WorkflowRunner implements IWorkflowRunner {
-  private readonly agent = createAgent();
+  constructor(
+    private readonly workflow: InvokableWorkflow,
+    private readonly strategyStore: IStrategyStore,
+  ) {}
 
   async run({ query, contextId }: WorkflowRunOptions): Promise<WorkflowResult> {
-    const result = await this.agent.invoke(
-      { messages: [new HumanMessage(query)] },
-      { configurable: { thread_id: contextId }, recursionLimit: 6 }
-    );
+    let strategy: TradingStrategy | null = null;
 
-    const last = result.messages.at(-1) as AIMessage;
-    const response =
-      typeof last?.content === "string"
-        ? last.content
-        : JSON.stringify(last?.content);
-
-    const searchQueries: string[] = [];
-    const seen = new Set<string>();
-    for (const msg of result.messages) {
-      const ai = msg as AIMessage;
-      for (const tc of ai.tool_calls ?? []) {
-        const q = tc.args?.query as string | undefined;
-        if (q && !seen.has(q)) { seen.add(q); searchQueries.push(q); }
+    if (contextId) {
+      strategy = await this.strategyStore.loadStrategy(contextId);
+      if (!strategy) {
+        // Fall back to first available profile (useful for testing with a single user)
+        const all = await this.strategyStore.listAll();
+        strategy = all[0] ?? null;
+        if (strategy) {
+          console.warn(`[WorkflowRunner] no profile for contextId "${contextId}", using "${strategy.ensName}"`);
+        }
       }
+    } else {
+      const all = await this.strategyStore.listAll();
+      strategy = all[0] ?? null;
     }
 
-    return { contextId, response, searchQueries };
+    if (!strategy) {
+      return {
+        contextId: contextId ?? "unknown",
+        response: "No user profile found. Please register at predict-intelligence-ui.vercel.app first.",
+        decisions: [],
+        searchQueries: [],
+      };
+    }
+
+    const result = await this.workflow.invoke(
+      { messages: [new HumanMessage(query)], strategy },
+      { configurable: { thread_id: contextId ?? strategy.ensName } },
+    );
+
+    return {
+      contextId: contextId ?? strategy.ensName,
+      response: result.summary || "Workflow completed with no summary.",
+      decisions: result.validatedDecisions ?? [],
+      searchQueries: [],
+    };
   }
 }

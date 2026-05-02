@@ -1,4 +1,5 @@
-import type { IMarketSearch, MarketFact } from "../../ports/outbound/IMarketSearch.js";
+import type { IMarketSearch } from "../../ports/outbound/IMarketSearch.js";
+import type { MarketFact } from "../../domain/entities/market.js";
 
 const GRAPHITI_URL = () => process.env.GRAPHITI_URL ?? "http://localhost:8000";
 const GROUP_ID = () => process.env.GRAPHITI_GROUP_ID ?? "predict";
@@ -11,11 +12,7 @@ export class GraphitiAdapter implements IMarketSearch {
       res = await fetch(`${GRAPHITI_URL()}/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query,
-          group_ids: [GROUP_ID()],
-          max_facts: maxFacts,
-        }),
+        body: JSON.stringify({ query, group_ids: [GROUP_ID()], max_facts: maxFacts }),
       });
     } catch (err) {
       throw new Error(`Graphiti unreachable at ${GRAPHITI_URL()} — is Docker running? ${err}`);

@@ -1,0 +1,12 @@
+{
+  "dry_run": true,
+  "require_human_approval": true,
+  "max_position_usdc": 10,
+  "max_total_exposure_pct": 0.7,
+  "gas_reserve_eth": 0.005,
+  "take_profit_pct": 0.3,
+  "stop_loss_pct": 0.2,
+  "max_days_open": 30,
+  "preferred_domains": ["crypto", "Bitcoin", "US election"],
+  "confidence_threshold": 0.5
+}

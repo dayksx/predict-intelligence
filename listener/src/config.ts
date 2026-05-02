@@ -14,7 +14,7 @@ export const config = {
 
   polymarket: {
     gammaUrl: process.env.POLYMARKET_GAMMA_URL ?? "https://gamma-api.polymarket.com",
-    fetchLimit: parseInt(process.env.POLYMARKET_FETCH_LIMIT ?? "50"),
+    fetchLimit: parseInt(process.env.POLYMARKET_FETCH_LIMIT ?? "200"),
     categories: parseCategories(process.env.MARKET_CATEGORIES),
   },
 } as const;

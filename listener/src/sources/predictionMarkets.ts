@@ -45,9 +45,11 @@ const DOMAIN_KEYWORDS: Record<string, string[]> = {
     "emissions", "climate",
   ],
   sports: [
-    "nfl", "nba", "mlb", "nhl", "world cup", "champions league", "premier league",
+    "nfl", "nba", "nba finals", "mlb", "nhl", "world cup", "champions league", "premier league",
     "soccer", "football", "basketball", "baseball", "tennis", "wimbledon",
-    "olympics", "superbowl", "super bowl",
+    "olympics", "superbowl", "super bowl", "celtics", "lakers", "warriors",
+    "magic", "knicks", "bulls", "heat", "mavs", "nuggets", "playoffs",
+    "championship", "mvp", "athlete", "team wins",
   ],
   finance: [
     "fed", "federal reserve", "interest rate", "inflation", "gdp", "recession",

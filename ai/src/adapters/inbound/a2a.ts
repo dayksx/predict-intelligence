@@ -118,15 +118,18 @@ async function runWorkflowAsync(
   try {
     const result = await workflow.run(options);
 
+    const artifacts: A2ATask["artifacts"] = [];
+    if (result.decisions.length) {
+      artifacts.push({ name: "decisions", parts: [{ data: result.decisions }] });
+    }
+
     patch({
       status: {
         state: "completed",
         timestamp: new Date().toISOString(),
         message: { role: "ROLE_AGENT", parts: [{ text: result.response }] },
       },
-      artifacts: result.searchQueries.length
-        ? [{ name: "search-queries", parts: [{ data: result.searchQueries }] }]
-        : undefined,
+      artifacts: artifacts.length ? artifacts : undefined,
     });
 
     console.log(`[a2a] task ${taskId} completed`);

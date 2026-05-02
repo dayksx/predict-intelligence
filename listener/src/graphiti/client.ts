@@ -8,13 +8,22 @@ const graphiti = axios.create({
   timeout: 30_000,
 });
 
-/** Converts a MarketEvent to a compact text summary for Graphiti entity extraction.
- *  Kept short intentionally — fewer tokens = lower LLM cost per episode. */
+/** Converts a MarketEvent into a declarative sentence Graphiti can extract as a probability fact.
+ *  Written as a statement rather than a label so the LLM creates a "X has Y% probability" fact.
+ *  Includes market_id so the agent can resolve it back to the registry for CLOB trading. */
 function toEpisodeBody(m: MarketEvent): string {
-  const prob = `YES ${(m.yes_prob * 100).toFixed(0)}% NO ${(m.no_prob * 100).toFixed(0)}%`;
-  const vol = `vol $${Math.round(m.volume_usdc).toLocaleString()}`;
-  const end = m.resolution_date ? ` resolves ${m.resolution_date.slice(0, 10)}` : "";
-  return `[${m.domain}] ${m.title}. ${prob}, ${vol}.${end}`.trim();
+  const yesPct = (m.yes_prob * 100).toFixed(0);
+  const noPct  = (m.no_prob  * 100).toFixed(0);
+  const vol    = `$${Math.round(m.volume_usdc).toLocaleString()} USDC`;
+  const end    = m.resolution_date ? ` Resolves ${m.resolution_date.slice(0, 10)}.` : "";
+  const ids    = `market_id:${m.market_id}` +
+                 (m.clob_yes_token_id ? ` clob_yes:${m.clob_yes_token_id}` : "") +
+                 (m.clob_no_token_id  ? ` clob_no:${m.clob_no_token_id}`   : "") +
+                 (m.neg_risk          ? " neg_risk:true"                     : "");
+  return (
+    `[${m.domain}] "${m.title}" has a ${yesPct}% YES probability and ${noPct}% NO probability ` +
+    `on Polymarket with ${vol} trading volume.${end} ${ids}`
+  ).trim();
 }
 
 /** POSTs a single episode to the Graphiti server. */
@@ -43,6 +52,8 @@ export async function ingestMarkets(markets: MarketEvent[]): Promise<void> {
     try {
       await addEpisode(m);
       ingested++;
+      // Small delay to avoid overwhelming the LiteLLM proxy
+      await new Promise((r) => setTimeout(r, 300));
     } catch (err) {
       console.warn(`  [graphiti] failed to ingest market ${m.market_id}:`, err);
     }
