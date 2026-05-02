@@ -88,10 +88,20 @@ async def get_graphiti(settings: ZepEnvDep):
         embedder=embedder,
     )
 
-    # Override database name — Aura Free instances may use a non-default name
+    # Re-create the driver with the correct database for Aura compatibility.
     neo4j_database = os.environ.get('NEO4J_DATABASE', 'neo4j')
-    if hasattr(client, 'driver') and hasattr(client.driver, 'database'):
-        client.driver.database = neo4j_database
+    try:
+        from graphiti_core.driver.neo4j_driver import Neo4jDriver as _Neo4jDriver
+        client.driver = _Neo4jDriver(
+            uri=settings.neo4j_uri,
+            user=settings.neo4j_user,
+            password=settings.neo4j_password,
+            database=neo4j_database,
+        )
+    except Exception as e:
+        logger.warning(f'[graphiti] driver override failed ({e}), trying attribute patch')
+        if hasattr(client, 'driver') and hasattr(client.driver, 'database'):
+            client.driver.database = neo4j_database
 
     if settings.openai_base_url is not None:
         client.llm_client.config.base_url = settings.openai_base_url
@@ -107,15 +117,27 @@ async def get_graphiti(settings: ZepEnvDep):
 
 
 async def initialize_graphiti(settings: ZepEnvDep):
+    neo4j_database = os.environ.get('NEO4J_DATABASE', 'neo4j')
     client = ZepGraphiti(
         uri=settings.neo4j_uri,
         user=settings.neo4j_user,
         password=settings.neo4j_password,
     )
-    # Override database name — Aura Free instances may use a non-default name
-    neo4j_database = os.environ.get('NEO4J_DATABASE', 'neo4j')
-    if hasattr(client, 'driver') and hasattr(client.driver, 'database'):
-        client.driver.database = neo4j_database
+    # Re-create the driver with the correct database for Aura compatibility.
+    # Aura Free instances use the instance ID as the database name, not 'neo4j'.
+    try:
+        from graphiti_core.driver.neo4j_driver import Neo4jDriver as _Neo4jDriver
+        client.driver = _Neo4jDriver(
+            uri=settings.neo4j_uri,
+            user=settings.neo4j_user,
+            password=settings.neo4j_password,
+            database=neo4j_database,
+        )
+        logger.info(f'[graphiti] using database: {neo4j_database}')
+    except Exception as e:
+        logger.warning(f'[graphiti] driver override failed ({e}), trying attribute patch')
+        if hasattr(client, 'driver') and hasattr(client.driver, 'database'):
+            client.driver.database = neo4j_database
     await client.build_indices_and_constraints()
 
 
