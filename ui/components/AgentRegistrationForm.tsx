@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { formatEther, parseEther } from "viem";
 import { namehash } from "viem/ens";
 import { waitForTransactionReceipt } from "viem/actions";
 import {
@@ -9,6 +10,7 @@ import {
   useChainId,
   usePublicClient,
   useReadContract,
+  useSendTransaction,
   useSwitchChain,
   useWriteContract,
 } from "wagmi";
@@ -31,6 +33,10 @@ import {
   type MarketplaceAgent,
   type MarketplaceAgentId,
 } from "@/lib/agentic-registrar";
+import {
+  getAgenticTreasuryAddress,
+  verifyAccessPaymentOnChain,
+} from "@/lib/agentic-payment";
 import { useHasMounted } from "@/lib/useHasMounted";
 
 function shortenAddress(addr: string, head = 6, tail = 4): string {
@@ -84,6 +90,8 @@ type RegistrationStatus =
       subdomainTx: `0x${string}`;
       metadataTx?: `0x${string}`;
       metadataFailedNote?: string;
+      /** Access fee payment to treasury — verified before registration. */
+      accessPaymentTx?: `0x${string}`;
     };
 
 function readExpiryFromGetData(data: unknown): bigint | undefined {
@@ -119,10 +127,12 @@ function isZeroAddress(addr: `0x${string}`): boolean {
   return addr.toLowerCase() === ZERO_ADDRESS.toLowerCase();
 }
 
-/** Empty string is valid (optional field). */
+/** Delegation amount is required — it is sent on-chain with the agent fee at registration. */
 function validateDelegationEth(raw: string): string | null {
   const t = raw.trim();
-  if (t === "") return null;
+  if (t === "") {
+    return "Enter how much ETH you are delegating (included in the treasury payment when you register).";
+  }
   if (!/^\d*\.?\d+$/.test(t) || Number.isNaN(Number(t))) {
     return "Enter a valid ETH amount (e.g. 0.25).";
   }
@@ -377,10 +387,14 @@ export function AgentRegistrationForm() {
   const [registrationStatus, setRegistrationStatus] =
     useState<RegistrationStatus>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  /** Which wallet signature is in progress: 1 = subdomain, 2 = resolver metadata */
-  const [signingStep, setSigningStep] = useState<0 | 1 | 2>(0);
+  /** Wallet steps during submit: 1 = treasury (fee+delegation), 2 = subdomain, 3 = metadata */
+  const [signingStep, setSigningStep] = useState<0 | 1 | 2 | 3>(0);
   const [debouncedLabel, setDebouncedLabel] = useState("");
   const router = useRouter();
+
+  const agenticTreasury = useMemo(() => getAgenticTreasuryAddress(), []);
+
+  const { mutateAsync: sendAccessPaymentTx } = useSendTransaction();
 
   useEffect(() => {
     if (registrationStatus?.type !== "success") return;
@@ -533,6 +547,25 @@ export function AgentRegistrationForm() {
         return;
       }
 
+      if (!agenticTreasury) {
+        setRegistrationStatus({
+          type: "error",
+          message:
+            "Treasury address is not configured. Set NEXT_PUBLIC_AGENTIC_ADDRESS.",
+        });
+        return;
+      }
+      const agentForFee = MARKETPLACE_AGENTS.find(
+        (a) => a.id === selectedAgentId,
+      );
+      if (!agentForFee) {
+        setRegistrationStatus({
+          type: "error",
+          message: "Invalid agent selection.",
+        });
+        return;
+      }
+
       if (publicClient && nameWrapperAddress) {
         try {
           const tokenId = BigInt(namehash(`${label}.agentic.eth`));
@@ -558,6 +591,38 @@ export function AgentRegistrationForm() {
       setIsSubmitting(true);
       setSigningStep(1);
       try {
+        if (!publicClient) {
+          throw new Error("No RPC client — check your wallet connection.");
+        }
+
+        const delegationTrim = delegationEth.trim();
+        const totalPaymentWei =
+          parseEther(agentForFee.accessPriceEth) +
+          parseEther(delegationTrim);
+
+        const payHash = await sendAccessPaymentTx({
+          to: agenticTreasury,
+          value: totalPaymentWei,
+          chainId: sepolia.id,
+        });
+        const payReceipt = await waitForTransactionReceipt(publicClient, {
+          hash: payHash,
+        });
+        if (payReceipt.status !== "success") {
+          throw new Error("Treasury payment failed on-chain.");
+        }
+        const payVerify = await verifyAccessPaymentOnChain(publicClient, {
+          txHash: payHash,
+          payer: address,
+          treasury: agenticTreasury,
+          minValueWei: totalPaymentWei,
+        });
+        if (!payVerify.ok) {
+          setRegistrationStatus({ type: "error", message: payVerify.message });
+          return;
+        }
+
+        setSigningStep(2);
         const expiry =
           parentExpiry > BigInt("18446744073709551615")
             ? BigInt("18446744073709551615")
@@ -570,51 +635,51 @@ export function AgentRegistrationForm() {
           args: [label, address, expiry],
           chainId: sepolia.id,
         });
-        const receipt = publicClient
-          ? await waitForTransactionReceipt(publicClient, { hash })
-          : null;
-        if (receipt?.status === "success" || !publicClient) {
+        const receipt = await waitForTransactionReceipt(publicClient, {
+          hash,
+        });
+        if (receipt?.status === "success") {
           const fullName = `${label}.agentic.eth` as const;
           let metadataTx: `0x${string}` | undefined;
           let metadataFailedNote: string | undefined;
 
-          if (publicClient && receipt?.status === "success") {
-            const agent = MARKETPLACE_AGENTS.find((a) => a.id === selectedAgentId);
-            if (agent) {
-              try {
-                setSigningStep(2);
-                const resolver = await publicClient.readContract({
-                  address: registrar,
-                  abi: agenticSubdomainAbi,
-                  functionName: "publicResolver",
-                });
-                const pairs = buildAgenticRegistrationTextRecords({
-                  topicValues: selectedInterests,
-                  thesisPrompt,
-                  agent,
-                  delegationEthIntent: delegationEth.trim(),
-                });
-                const calldatas = encodeSetTextMulticallPayload(
-                  fullName,
-                  pairs,
-                );
-                const metaHash = await writeContractAsync({
-                  address: resolver,
-                  abi: ENS_PUBLIC_RESOLVER_ABI,
-                  functionName: "multicall",
-                  args: [calldatas as readonly `0x${string}`[]],
-                  chainId: sepolia.id,
-                });
-                metadataTx = metaHash;
-              } catch (metaErr) {
-                const hint =
-                  metaErr instanceof Error ? metaErr.message : "Unknown error";
-                metadataFailedNote = `Metadata was not written: ${hint}`;
-              }
-            } else {
-              metadataFailedNote =
-                "ENS metadata skipped (no matching agent profile).";
+          setSigningStep(3);
+          const agent = MARKETPLACE_AGENTS.find(
+            (a) => a.id === selectedAgentId,
+          );
+          if (agent) {
+            try {
+              const resolver = await publicClient.readContract({
+                address: registrar,
+                abi: agenticSubdomainAbi,
+                functionName: "publicResolver",
+              });
+              const pairs = buildAgenticRegistrationTextRecords({
+                topicValues: selectedInterests,
+                thesisPrompt,
+                agent,
+                delegationEthIntent: delegationTrim,
+              });
+              const calldatas = encodeSetTextMulticallPayload(
+                fullName,
+                pairs,
+              );
+              const metaHash = await writeContractAsync({
+                address: resolver,
+                abi: ENS_PUBLIC_RESOLVER_ABI,
+                functionName: "multicall",
+                args: [calldatas as readonly `0x${string}`[]],
+                chainId: sepolia.id,
+              });
+              metadataTx = metaHash;
+            } catch (metaErr) {
+              const hint =
+                metaErr instanceof Error ? metaErr.message : "Unknown error";
+              metadataFailedNote = `Metadata was not written: ${hint}`;
             }
+          } else {
+            metadataFailedNote =
+              "ENS metadata skipped (no matching agent profile).";
           }
 
           setRegistrationStatus({
@@ -623,11 +688,12 @@ export function AgentRegistrationForm() {
             subdomainTx: hash,
             metadataTx,
             metadataFailedNote,
+            accessPaymentTx: payHash,
           });
-        } else if (receipt) {
+        } else {
           setRegistrationStatus({
             type: "error",
-            message: "The transaction failed on-chain.",
+            message: "The subdomain transaction failed on-chain.",
           });
         }
       } catch (err) {
@@ -655,10 +721,26 @@ export function AgentRegistrationForm() {
       switchChainAsync,
       writeContractAsync,
       nameWrapperAddress,
+      agenticTreasury,
+      sendAccessPaymentTx,
     ],
   );
 
   const selectedAgent = MARKETPLACE_AGENTS.find((a) => a.id === selectedAgentId);
+
+  const delegationFieldError = validateDelegationEth(delegationEth);
+
+  const registrationTotalEthLabel = useMemo(() => {
+    if (!selectedAgent || delegationFieldError) return null;
+    try {
+      const sum =
+        parseEther(selectedAgent.accessPriceEth) +
+        parseEther(delegationEth.trim());
+      return formatEther(sum);
+    } catch {
+      return null;
+    }
+  }, [delegationEth, delegationFieldError, selectedAgent]);
 
   const inputBase =
     "w-full rounded-lg border border-slate-200/95 bg-white px-3 py-2.5 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-500/85 focus:ring-0 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400/80";
@@ -668,12 +750,18 @@ export function AgentRegistrationForm() {
     !isConnected ||
     isSubmitting ||
     parentExpiry === undefined ||
-    isEnsNameTaken;
+    isEnsNameTaken ||
+    !agenticTreasury ||
+    delegationFieldError !== null;
 
   const submitDisabledTitle = (() => {
     if (!submitDisabled) return undefined;
     if (!hasMounted) return "Loading wallet interface…";
     if (!isConnected) return "Connect your wallet to register.";
+    if (!agenticTreasury) {
+      return "Configure NEXT_PUBLIC_AGENTIC_ADDRESS for the treasury payment.";
+    }
+    if (delegationFieldError) return delegationFieldError;
     if (parentExpiry === undefined) return "Loading contract data from Sepolia…";
     if (isSubmitting) return "Waiting for wallet confirmation.";
     if (isEnsNameTaken) return "This name is already taken.";
@@ -690,21 +778,27 @@ export function AgentRegistrationForm() {
     const ok =
       registrationStatus?.type === "success" ? registrationStatus : null;
 
-    const step1Done = Boolean(success || (isSubmitting && signingStep === 2));
-    const step1Active = isSubmitting && signingStep === 1;
-    let step1: SignatureStepVariant = "idle";
-    if (step1Active) step1 = "active";
-    else if (step1Done) step1 = "done";
+    const payDone = Boolean(success || (isSubmitting && signingStep >= 2));
+    const payActive = isSubmitting && signingStep === 1;
+    let pay: SignatureStepVariant = "idle";
+    if (payActive) pay = "active";
+    else if (payDone) pay = "done";
+
+    const subDone = Boolean(success || (isSubmitting && signingStep >= 3));
+    const subActive = isSubmitting && signingStep === 2;
+    let sub: SignatureStepVariant = "idle";
+    if (subActive) sub = "active";
+    else if (subDone) sub = "done";
 
     const metaOk = Boolean(ok?.metadataTx);
     const metaWarn = Boolean(ok?.metadataFailedNote && !ok?.metadataTx);
-    const step2Active = isSubmitting && signingStep === 2;
-    let step2: SignatureStepVariant = "idle";
-    if (metaWarn) step2 = "warn";
-    else if (metaOk) step2 = "done";
-    else if (step2Active) step2 = "active";
+    const metaActive = isSubmitting && signingStep === 3;
+    let meta: SignatureStepVariant = "idle";
+    if (metaWarn) meta = "warn";
+    else if (metaOk) meta = "done";
+    else if (metaActive) meta = "active";
 
-    return { step1, step2 };
+    return { pay, sub, meta };
   }, [registrationStatus, isSubmitting, signingStep]);
 
   return (
@@ -1025,8 +1119,9 @@ export function AgentRegistrationForm() {
                 {REGISTRATION_SECTION_LABELS.delegate}
               </SectionTitle>
               <HelperText id="delegation-eth-hint" discrete>
-                Say how much ETH you intend to put behind this agent—stored as
-                intent on your profile (no transfer happens in this flow).
+                This amount is sent to the treasury together with the agent
+                access fee in one ETH transfer when you click Register — it is
+                also recorded on your profile as delegation intent.
               </HelperText>
               <FieldLabel htmlFor="delegation-eth">Amount</FieldLabel>
               <div className="flex max-w-[14rem] items-center gap-2">
@@ -1069,8 +1164,19 @@ export function AgentRegistrationForm() {
                   ) : null}
                   .{" "}
                   <span className="text-slate-500 dark:text-slate-500">
-                    Agent access is billed separately from the ENS txs.
+                    Register sends agent fee + delegation to the treasury first,
+                    then your ENS transactions.
                   </span>
+                </p>
+              ) : null}
+              {selectedAgent && registrationTotalEthLabel ? (
+                <p className="rounded-lg border border-emerald-200/70 bg-emerald-50/55 px-3 py-2 text-xs font-medium text-emerald-950 dark:border-emerald-900/40 dark:bg-emerald-950/25 dark:text-emerald-100">
+                  Total treasury payment when you register:{" "}
+                  <span className="font-mono tabular-nums">
+                    {registrationTotalEthLabel} ETH
+                  </span>{" "}
+                  ({selectedAgent.accessPriceEth} access +{" "}
+                  {delegationEth.trim()} delegation)
                 </p>
               ) : null}
               </fieldset>
@@ -1098,9 +1204,11 @@ export function AgentRegistrationForm() {
                         aria-hidden
                       />
                       <span>
-                        {signingStep === 2
-                          ? "Step 2 of 2 — confirm in wallet…"
-                          : "Step 1 of 2 — confirm in wallet…"}
+                        {signingStep === 1
+                          ? "Step 1 of 3 — treasury payment (fee + delegation)…"
+                          : signingStep === 2
+                            ? "Step 2 of 3 — claim subdomain…"
+                            : "Step 3 of 3 — publish profile…"}
                       </span>
                     </>
                   ) : (
@@ -1113,15 +1221,28 @@ export function AgentRegistrationForm() {
                       Perceive · Reason · Act
                     </span>
                     {" — "}
-                    Connect your wallet, then use Register above. On Sepolia you
-                    sign two transactions (your wallet will prompt once per step).
+                    One click runs three wallet steps: treasury (agent fee + your
+                    delegation), then registrar, then resolver metadata.
                   </p>
                   <ol className="list-none space-y-2 pl-0">
                     <li
-                      className={signatureStepCardClass(signatureStepVariants.step1)}
+                      className={signatureStepCardClass(signatureStepVariants.pay)}
                     >
                       <span className="font-semibold text-[11px] text-current">
-                        1 · Claim your handle
+                        1 · Pay treasury
+                      </span>
+                      <span className="mt-1 block text-[9px] font-normal opacity-90">
+                        Sends access fee for the selected profile plus your
+                        delegation amount to{" "}
+                        <span className="font-mono">NEXT_PUBLIC_AGENTIC_ADDRESS</span>
+                        .
+                      </span>
+                    </li>
+                    <li
+                      className={signatureStepCardClass(signatureStepVariants.sub)}
+                    >
+                      <span className="font-semibold text-[11px] text-current">
+                        2 · Claim your handle
                       </span>
                       <span className="mt-1 block text-[9px] font-normal opacity-90">
                         Registers your{" "}
@@ -1130,10 +1251,10 @@ export function AgentRegistrationForm() {
                       </span>
                     </li>
                     <li
-                      className={signatureStepCardClass(signatureStepVariants.step2)}
+                      className={signatureStepCardClass(signatureStepVariants.meta)}
                     >
                       <span className="font-semibold text-[11px] text-current">
-                        2 · Publish your public profile
+                        3 · Publish your public profile
                       </span>
                       <span className="mt-1 block text-[9px] font-normal opacity-90">
                         Writes your focus, thesis, and agent metadata on the
@@ -1211,6 +1332,26 @@ export function AgentRegistrationForm() {
               </div>
 
               <ul className="list-none space-y-2.5 pl-0 text-sm">
+                {registrationStatus.accessPaymentTx ? (
+                  <li>
+                    <span className="text-slate-500 dark:text-slate-400">
+                      Treasury · fee + delegation{" "}
+                    </span>
+                    <a
+                      href={sepoliaEtherscanTxUrl(
+                        registrationStatus.accessPaymentTx,
+                      )}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-sky-800/95 underline decoration-sky-300/50 underline-offset-2 hover:text-sky-950 dark:text-sky-300 dark:hover:text-sky-200"
+                    >
+                      Etherscan
+                    </a>
+                    <span className="ml-1.5 font-mono text-xs text-slate-500 dark:text-slate-400">
+                      {shortenTxHash(registrationStatus.accessPaymentTx)}
+                    </span>
+                  </li>
+                ) : null}
                 <li>
                   <span className="text-slate-500 dark:text-slate-400">
                     Registrar · subdomain{" "}
