@@ -1,51 +1,57 @@
-import { ChatOpenAI } from "@langchain/openai";
-import { StateGraph, MessagesAnnotation, START, END, MemorySaver } from "@langchain/langgraph";
-import { ToolNode } from "@langchain/langgraph/prebuilt";
-import { SystemMessage } from "@langchain/core/messages";
-import type { AIMessage } from "@langchain/core/messages";
-import { searchMarketsTool } from "./tools/searchMarkets.js";
+import { StateGraph, START, END } from "@langchain/langgraph";
+import { AgentStateAnnotation } from "./agentState.js";
+import type { IMarketSearch } from "../ports/outbound/IMarketSearch.js";
+import type { IUserPrefsRepo } from "../ports/outbound/IUserPrefsRepo.js";
+import type { IPositionStore } from "../ports/outbound/IPositionStore.js";
+import type { ITradeExecutor } from "../ports/outbound/ITradeExecutor.js";
+import type { ISwapExecutor } from "../ports/outbound/ISwapExecutor.js";
+import type { IWalletService } from "../ports/outbound/IWalletService.js";
+import type { IAuditLogger } from "../ports/outbound/IAuditLogger.js";
+import type { IMarketRegistry } from "../ports/outbound/IMarketRegistry.js";
+import { makeIngestNode } from "./nodes/ingestNode.js";
+import { makeRetrieveNode } from "./nodes/retrieveNode.js";
+import { makeReasonNode } from "./nodes/reasonNode.js";
+import { makeValidateNode } from "./nodes/validateNode.js";
+import { makePreflightNode } from "./nodes/preflightNode.js";
+import { makeActNode } from "./nodes/actNode.js";
+import { makeRecordNode } from "./nodes/recordNode.js";
 
-const SYSTEM_PROMPT = `You are a prediction market analyst with access to a live knowledge graph 
-of market data from Polymarket.
-
-When a user asks about a market, asset, or trading opportunity:
-1. Call search_markets once with a concise keyword query (e.g. "Bitcoin", "US election", "Fed rate")
-2. If the first search returns nothing useful, try one alternative query — then stop
-3. Analyse the returned facts — probabilities, volumes, resolution dates, relationships
-4. Give a concise, data-grounded answer with your reasoning
-
-Never call search_markets more than twice for the same question.
-Be direct and analytical. If the graph has no data, say so clearly.`;
-
-const tools = [searchMarketsTool];
-const toolNode = new ToolNode(tools);
-
-/** Core domain: the LangGraph ReAct agent compiled with a MemorySaver checkpointer.
- *  Conversation history is persisted automatically per thread_id — no manual tracking needed. */
-export function createAgent() {
-  const llm = new ChatOpenAI({
-    modelName: process.env.LITELLM_MODEL ?? "gpt-4o-mini",
-    openAIApiKey: process.env.LITELLM_API_KEY,
-    configuration: { baseURL: process.env.LITELLM_BASE_URL },
-    temperature: 0.1,
-  }).bindTools(tools);
-
-  async function callModel(state: typeof MessagesAnnotation.State) {
-    const messages = [new SystemMessage(SYSTEM_PROMPT), ...state.messages];
-    const response = await llm.invoke(messages);
-    return { messages: [response] };
-  }
-
-  function shouldContinue(state: typeof MessagesAnnotation.State) {
-    const last = state.messages.at(-1) as AIMessage;
-    return last.tool_calls?.length ? "tools" : END;
-  }
-
-  return new StateGraph(MessagesAnnotation)
-    .addNode("agent", callModel)
-    .addNode("tools", toolNode)
-    .addEdge(START, "agent")
-    .addConditionalEdges("agent", shouldContinue)
-    .addEdge("tools", "agent")
-    .compile({ checkpointer: new MemorySaver() });
+export interface WorkflowDeps {
+  marketSearch: IMarketSearch;
+  userPrefsRepo: IUserPrefsRepo;
+  positionStore: IPositionStore;
+  tradeExecutor: ITradeExecutor;
+  swapExecutor: ISwapExecutor;
+  walletService: IWalletService;
+  auditLogger: IAuditLogger;
+  marketRegistry: IMarketRegistry;
+  walletAddress: string;
 }
+
+/**
+ * Assembles the full LangGraph pipeline from injected port implementations.
+ * Each node is a pure factory function — no framework coupling inside nodes.
+ *
+ * Pipeline: ingest → retrieve → reason → validate → preflight → act → record
+ */
+export function createWorkflow(deps: WorkflowDeps) {
+  return new StateGraph(AgentStateAnnotation)
+    .addNode("ingest", makeIngestNode(deps.userPrefsRepo, deps.positionStore))
+    .addNode("retrieve", makeRetrieveNode(deps.marketSearch))
+    .addNode("reason", makeReasonNode())
+    .addNode("validate", makeValidateNode())
+    .addNode("preflight", makePreflightNode(deps.walletService, deps.auditLogger))
+    .addNode("act", makeActNode(deps.tradeExecutor, deps.swapExecutor, deps.auditLogger, deps.marketRegistry, deps.walletAddress))
+    .addNode("record", makeRecordNode(deps.positionStore, deps.auditLogger))
+    .addEdge(START, "ingest")
+    .addEdge("ingest", "retrieve")
+    .addEdge("retrieve", "reason")
+    .addEdge("reason", "validate")
+    .addEdge("validate", "preflight")
+    .addEdge("preflight", "act")
+    .addEdge("act", "record")
+    .addEdge("record", END)
+    .compile();
+}
+
+export type TradingWorkflow = ReturnType<typeof createWorkflow>;

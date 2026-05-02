@@ -1,9 +1,8 @@
 import "dotenv/config";
-import { createA2AServer } from "./adapters/inbound/a2a.js";
-import { WorkflowRunner } from "./adapters/inbound/WorkflowRunner.js";
+import { buildContainer } from "./infrastructure/container.js";
 
 const port = parseInt(process.env.PORT ?? "4337");
-const app = createA2AServer(new WorkflowRunner());
+const app = buildContainer();
 
 app.listen(port, () => {
   console.log(`[a2a] server running at http://localhost:${port}`);

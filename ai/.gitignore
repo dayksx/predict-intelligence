@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+
+# Runtime data — generated at runtime, should not be committed
+data/positions.json
+data/audit.jsonl
+
+# Live user preferences — keep the example, ignore the real file
+config/user_preferences.json
+!config/user_preferences.example.json

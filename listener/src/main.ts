@@ -3,12 +3,18 @@ import { config } from "./config.js";
 import { fetchPolymarketMarkets } from "./sources/predictionMarkets.js";
 import { fetchNewsRss } from "./sources/newsRss.js";
 import { init, ingestMarkets } from "./graphiti/client.js";
+import { updateRegistry } from "./graphiti/marketRegistry.js";
 
 async function tick(): Promise<void> {
   const start = Date.now();
   console.log(`[${new Date().toISOString()}] ---- tick starting ----`);
 
   const markets = await fetchPolymarketMarkets();
+
+  // Write trading metadata to the registry before Graphiti (exact lookup, never expires)
+  await updateRegistry(markets);
+
+  // Write market intelligence to Graphiti (semantic reasoning, temporal context)
   await ingestMarkets(markets);
 
   const byDomain = markets.reduce<Record<string, number>>((acc, m) => {
