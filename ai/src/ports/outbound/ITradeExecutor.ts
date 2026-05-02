@@ -9,7 +9,7 @@ export interface TradeParams {
   action: "trade";
   direction: "yes" | "no";
   amount_usdc: number;
-  confidence: number;
+  confidence: number | undefined;
   rationale: string;
   sources: string[];
 }

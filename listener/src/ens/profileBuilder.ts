@@ -3,6 +3,11 @@ import type { EnsTextRecords, FocusDomain, AgentProfileId } from "./types.js";
 /** ETH/USD rough estimate for position sizing — update via ETH_USD_ESTIMATE env var. */
 const ETH_USD_ESTIMATE = parseFloat(process.env.ETH_USD_ESTIMATE ?? "3000");
 
+/** Hard cap on position size for testing — set MAX_POSITION_USDC=2 to limit all trades to $2. */
+const MAX_POSITION_USDC = process.env.MAX_POSITION_USDC
+  ? parseFloat(process.env.MAX_POSITION_USDC)
+  : null;
+
 /**
  * Base parameters per FocusDomain (search topics, position hold length).
  * These are domain-level defaults, overridden by the agent profile selected in the UI.
@@ -133,7 +138,10 @@ export function buildTradingStrategy(
   }
 
   const maxPositionUsdc = Math.max(
-    records.delegatedAmountEth * ETH_USD_ESTIMATE * agentCfg.position_size_pct,
+    Math.min(
+      records.delegatedAmountEth * ETH_USD_ESTIMATE * agentCfg.position_size_pct,
+      MAX_POSITION_USDC ?? Infinity,
+    ),
     1,
   );
 

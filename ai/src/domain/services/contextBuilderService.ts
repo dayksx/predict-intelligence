@@ -5,8 +5,16 @@ import type { MarketFact } from "../entities/market.js";
 /** Builds the system prompt injected into the LLM, personalised per user's ENS strategy. */
 export function buildSystemPrompt(strategy: TradingStrategy): string {
   const swapNote = strategy.actions.swap
-    ? "\n- Swaps: enabled (use swap action for token-to-token exchanges)"
+    ? "\n- Swaps: enabled — use swap action to buy/sell tokens on Uniswap (Sepolia testnet) when crypto market signals are strong"
     : "\n- Swaps: disabled for this profile";
+
+  const swapRules = strategy.actions.swap
+    ? `\n5. **Uniswap swaps** (crypto signals only): when a prediction market shows >65% probability for a crypto outcome (e.g. ETH price up, BTC rally, DeFi protocol growth), ALSO emit a "swap" decision alongside or instead of the market trade:
+   - tokenIn: "USDC" (sell stablecoin), tokenOut: the relevant token (e.g. "WETH", "UNI")
+   - sizeUsdc: same sizing rules as a trade (max $${strategy.max_position_usdc.toFixed(2)})
+   - confidence: derived from the prediction market probability
+   - Only swap when confidence >= ${strategy.confidence_threshold} and focusDomain is crypto`
+    : "";
 
   const thesisSection = strategy.thesisPrompt
     ? `\n## Your Investment Thesis\n${strategy.thesisPrompt}`
@@ -48,7 +56,7 @@ Return a JSON object with a "decisions" array. For each decision include:
 2. For new market opportunities aligned with your thesis: decide "trade" (buy YES/NO) or "hold" (pass)
    - Set marketId to the market_id value from the Market Intelligence section (e.g. "540816")
 3. Only recommend new "trade" if confidence >= ${strategy.confidence_threshold}
-4. Limit to $${strategy.max_position_usdc.toFixed(2)} USDC per new position`;
+4. Limit to $${strategy.max_position_usdc.toFixed(2)} USDC per new position${swapRules}`;
 }
 
 export function buildUserMessage(

@@ -421,10 +421,16 @@ export default function AgentActivitiesPage() {
               <ul className="mt-5 space-y-4">
                 {actActions.map((t) => {
                   const kind = triggerKindPresentation(t.kind);
+                  const cardClass =
+                    t.success === false
+                      ? "flex flex-col gap-3 rounded-xl border border-red-100 border-l-4 border-l-red-400 bg-red-50/40 p-4 dark:border-red-900/35 dark:border-l-red-500 dark:bg-red-950/25 sm:flex-row sm:items-start sm:justify-between"
+                      : t.success === true
+                        ? "flex flex-col gap-3 rounded-xl border border-emerald-100 border-l-4 border-l-emerald-400 bg-emerald-50/40 p-4 dark:border-emerald-900/35 dark:border-l-emerald-500 dark:bg-emerald-950/25 sm:flex-row sm:items-start sm:justify-between"
+                        : "flex flex-col gap-3 rounded-xl border border-amber-100 border-l-4 border-l-amber-400 bg-amber-50/40 p-4 dark:border-amber-900/35 dark:border-l-amber-500 dark:bg-amber-950/25 sm:flex-row sm:items-start sm:justify-between";
                   return (
                     <li
                       key={t.id}
-                      className="flex flex-col gap-3 rounded-xl border border-amber-100 border-l-4 border-l-amber-400 bg-amber-50/40 p-4 dark:border-amber-900/35 dark:border-l-amber-500 dark:bg-amber-950/25 sm:flex-row sm:items-start sm:justify-between"
+                      className={cardClass}
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">

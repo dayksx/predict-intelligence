@@ -48,7 +48,7 @@ router.get("/:label", (req, res) => {
 
   const rows = (result[0]?.values ?? []) as Array<[string, string, string]>;
 
-  const actions = rows.map(([run_id, data_json, timestamp]) => {
+  const actions = rows.map(([run_id, data_json, timestamp], idx) => {
     const data = JSON.parse(data_json ?? "{}") as {
       decision?: {
         action?: string;
@@ -70,7 +70,10 @@ router.get("/:label", (req, res) => {
     const decision = data.decision ?? {};
     const result2 = data.result ?? {};
     const action = decision.action ?? "other";
-    const dryRun = result2.dryRun ?? true;
+    // dry_run only applies to Polymarket (real money); Uniswap swaps run on Sepolia testnet
+    const isSwap = action === "swap";
+    const dryRun = !isSwap && (result2.dryRun ?? true);
+    const success = result2.success as boolean | undefined;
 
     let label = "Agent action";
     if (action === "trade") {
@@ -84,14 +87,15 @@ router.get("/:label", (req, res) => {
     const txHash = result2.txHash as string | undefined;
 
     return {
-      id: `trg-${result2.decisionId ?? timestamp}`,
+      id: `trg-${result2.decisionId ?? timestamp}-${idx}`,
       kind: actionToKind(action),
       label,
       occurredAt: timestamp,
+      success,
       primaryUrl: txHash ? `https://sepolia.etherscan.io/tx/${txHash}` : undefined,
       primaryUrlLabel: txHash ? "Sepolia Etherscan" : undefined,
       extraDetail:
-        [dryRun ? "Dry run" : null, result2.success === false ? "Failed" : null, decision.reasoning ?? null]
+        [dryRun ? "Dry run" : null, success === false ? "Failed" : null, decision.reasoning ?? null]
           .filter(Boolean)
           .join(" · ") || undefined,
     };
