@@ -1,6 +1,7 @@
-import { resolve } from "path";
+import { resolve, join } from "path";
 import { GraphitiAdapter } from "../adapters/outbound/GraphitiAdapter.js";
 import { JsonFileStrategyStore } from "../adapters/outbound/JsonFileStrategyStore.js";
+import { ApiStrategyStore } from "../adapters/outbound/ApiStrategyStore.js";
 import { JsonFilePositionStore } from "../adapters/outbound/JsonFilePositionStore.js";
 import { JsonFileMarketRegistry } from "../adapters/outbound/JsonFileMarketRegistry.js";
 import { FileAuditLogger } from "../adapters/outbound/FileAuditLogger.js";
@@ -13,6 +14,7 @@ import { createWorkflow } from "../application/graph.js";
 import { WorkflowRunner } from "../adapters/inbound/WorkflowRunner.js";
 import { createA2AServer } from "../adapters/inbound/a2a.js";
 import { runDailyCycle } from "./scheduler.js";
+import type { TradingStrategy } from "../domain/entities/strategy.js";
 // container.ts is the only file allowed to import across all layers
 
 export interface Container {
@@ -34,28 +36,50 @@ export function buildContainer(): Container {
   const registryFile = process.env.MARKET_REGISTRY_FILE  ?? resolve("data/market_registry.json");
   const apiUrl       = process.env.API_URL?.replace(/\/$/, "");
 
-  const strategyStore  = new JsonFileStrategyStore(profilesDir);
+  // Use ApiStrategyStore when API_URL is set (independent deployment);
+  // fall back to reading JSON files from disk when running standalone.
+  const strategyStore = apiUrl
+    ? new ApiStrategyStore(apiUrl)
+    : new JsonFileStrategyStore(profilesDir);
+
+  if (apiUrl) {
+    console.log(`[container] strategy store → API (${apiUrl})`);
+  } else {
+    console.log(`[container] strategy store → local files (${profilesDir})`);
+  }
   const marketSearch   = new GraphitiAdapter();
   const marketRegistry = new JsonFileMarketRegistry(registryFile);
   const walletService  = new StubWalletService();
   const tradeExecutor  = new StubTradeExecutor();
   const swapExecutor   = new StubSwapExecutor();
 
-  // A2A default path — a per-request strategy swaps in the real stores via WorkflowRunner
-  const defaultPositionStore = new JsonFilePositionStore(resolve("data/positions/default.json"));
-  const defaultAuditLogger   = new FileAuditLogger(resolve("data/audit/default.jsonl"));
+  /** Per-user workflow factory — mirrors scheduler logic so A2A runs also write to the API. */
+  const workflowFactory = (strategy: TradingStrategy) => {
+    const filePositionStore = new JsonFilePositionStore(
+      join(positionsDir, `${strategy.ensName}.json`),
+    );
+    const fileAuditLogger = new FileAuditLogger(
+      join(auditDir, `${strategy.ensName}.jsonl`),
+    );
+    const positionStore = apiUrl
+      ? new ApiPositionStore(apiUrl, strategy.ensName, filePositionStore)
+      : filePositionStore;
+    const auditLogger = apiUrl
+      ? new ApiAuditLogger(apiUrl, strategy.ensName, fileAuditLogger)
+      : fileAuditLogger;
 
-  const workflow = createWorkflow({
-    marketSearch,
-    positionStore: defaultPositionStore,
-    auditLogger:   defaultAuditLogger,
-    marketRegistry,
-    walletService,
-    tradeExecutor,
-    swapExecutor,
-  });
+    return createWorkflow({
+      marketSearch,
+      positionStore,
+      auditLogger,
+      marketRegistry,
+      walletService,
+      tradeExecutor,
+      swapExecutor,
+    });
+  };
 
-  const runner = new WorkflowRunner(workflow, strategyStore);
+  const runner = new WorkflowRunner(workflowFactory, strategyStore);
   const app    = createA2AServer(runner);
 
   const dailyCycle = () =>

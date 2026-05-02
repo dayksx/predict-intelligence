@@ -7,6 +7,6 @@ export function validateDecisions(decisions: Decision[], confidenceThreshold: nu
   return decisions.filter((d) => {
     if (d.action === "close_position" || d.action === "hold_open") return true;
     if (d.action === "hold") return false;
-    return d.confidence >= confidenceThreshold;
+    return (d.confidence ?? 0) >= confidenceThreshold;
   });
 }

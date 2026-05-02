@@ -1,5 +1,5 @@
 import { Router } from "express";
-import db from "../db.js";
+import { getDb } from "../db.js";
 
 const router = Router();
 
@@ -14,7 +14,6 @@ const router = Router();
  *         name: label
  *         required: true
  *         schema: { type: string }
- *         description: ENS subdomain label (e.g. "alice" for alice.agentic.eth)
  *     responses:
  *       200:
  *         description: List of reasoning run records
@@ -31,55 +30,52 @@ const router = Router();
 router.get("/:label", (req, res) => {
   const ensName = `${req.params.label}.agentic.eth`;
 
-  const rows = db
-    .prepare(
-      `SELECT run_id, event, data_json, timestamp
-       FROM audit_log
-       WHERE ens_name = ? AND event = 'run_complete'
-       ORDER BY id DESC
-       LIMIT 20`,
-    )
-    .all(ensName) as Array<{
-    run_id: string;
-    event: string;
-    data_json: string;
-    timestamp: string;
-  }>;
+  const result = getDb().exec(
+    `SELECT run_id, event, data_json, timestamp
+     FROM audit_log
+     WHERE ens_name = ? AND event = 'run_complete'
+     ORDER BY id DESC LIMIT 20`,
+    [ensName],
+  );
 
-  const runs = rows.map((row) => {
-    const data = JSON.parse(row.data_json ?? "{}") as {
-      summary?: string;
-      decisions?: Array<{ reasoning?: string; action?: string }>;
-    };
+  const rows = (result[0]?.values ?? []) as Array<[string, string, string, string]>;
 
-    const decisions = data.decisions ?? [];
-    const focusAreas = [
-      ...new Set(
-        decisions
-          .filter((d) => d.action && d.action !== "hold")
-          .map((d) =>
+  const runs = rows
+    .map(([run_id, , data_json, timestamp]) => {
+      const data = JSON.parse(data_json ?? "{}") as {
+        summary?: string;
+        decisions?: Array<{ reasoning?: string; action?: string }>;
+      };
+      const decisions = (data.decisions ?? []).filter(
+        (d) => d.action && d.action !== "hold",
+      );
+
+      // Skip runs where no real action was taken
+      if (decisions.length === 0) return null;
+
+      const focusAreas = [
+        ...new Set(
+          decisions.map((d) =>
             d.action === "trade"
               ? "Prediction market"
               : d.action === "swap"
                 ? "Swap"
                 : d.action === "close_position"
                   ? "Position close"
-                  : "Hold",
+                  : "Analysis",
           ),
-      ),
-    ];
+        ),
+      ];
 
-    return {
-      id: `rsn-${row.run_id ?? row.timestamp}`,
-      decidedAt: row.timestamp,
-      summary: data.summary ?? "Run complete — no summary recorded",
-      focusAreas: focusAreas.length > 0 ? focusAreas : ["Analysis"],
-      promptAlignment:
-        decisions.length > 0
-          ? `${decisions.length} decision(s) evaluated — ${decisions.filter((d) => d.action === "trade" || d.action === "swap").length} action(s) triggered`
-          : "No actionable decisions in this run",
-    };
-  });
+      return {
+        id: `rsn-${run_id ?? timestamp}`,
+        decidedAt: timestamp,
+        summary: data.summary ?? "Run complete",
+        focusAreas,
+        promptAlignment: `${decisions.length} action(s) triggered`,
+      };
+    })
+    .filter(Boolean);
 
   res.json({ runs });
 });

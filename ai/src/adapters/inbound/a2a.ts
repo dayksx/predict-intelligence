@@ -13,7 +13,10 @@ interface A2ATask {
   status: { state: TaskState; message?: A2AMessage; timestamp: string };
   artifacts?: Array<{ name: string; parts: A2APart[] }>;
 }
-interface SendMessageRequest { message: A2AMessage }
+interface SendMessageRequest {
+  message: A2AMessage;
+  metadata?: { contextId?: string };
+}
 
 // ─── In-memory task store ─────────────────────────────────────────────────────
 
@@ -77,7 +80,8 @@ export function createA2AServer(workflow: IWorkflowRunner): express.Application 
     }
 
     const query = body.message.parts.map((p) => p.text ?? "").join(" ").trim();
-    const contextId = body.message.messageId ?? uuidv4();
+    // contextId is the ENS name sent by the UI in metadata (e.g. "ironman.agentic.eth")
+    const contextId = body.metadata?.contextId ?? body.message.messageId ?? uuidv4();
     const taskId = uuidv4();
     const now = new Date().toISOString();
 

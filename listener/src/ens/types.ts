@@ -1,10 +1,13 @@
 export type FocusDomain = "geopolitic" | "crypto" | "sport";
+export type AgentProfileId = "strategist" | "alpha" | "sports";
 
 /** Raw ENS text records fetched from the resolver for an agentic.eth subdomain. */
 export interface EnsTextRecords {
   focusDomain: FocusDomain;
   thesisPrompt: string;
   agentName: string;
+  /** Marketplace agent ID selected in the UI (e.g. "strategist", "alpha", "sports"). Null for legacy registrations. */
+  agentId: AgentProfileId | null;
   delegatedAmountEth: number;
 }
 

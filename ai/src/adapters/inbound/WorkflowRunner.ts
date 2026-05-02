@@ -4,8 +4,7 @@ import type { IStrategyStore } from "../../ports/outbound/IStrategyStore.js";
 import type { Decision } from "../../domain/entities/decision.js";
 import type { TradingStrategy } from "../../domain/entities/strategy.js";
 
-/** Minimal structural interface for the compiled LangGraph workflow.
- *  Defined here so this adapter doesn't need to import from the application layer. */
+/** Minimal structural interface for the compiled LangGraph workflow. */
 interface InvokableWorkflow {
   invoke(
     input: Record<string, unknown>,
@@ -13,14 +12,17 @@ interface InvokableWorkflow {
   ): Promise<{ summary?: string; validatedDecisions?: Decision[] }>;
 }
 
+/** Factory that builds a per-user workflow wired with the correct stores. */
+export type WorkflowFactory = (strategy: TradingStrategy) => InvokableWorkflow;
+
 /**
  * Inbound adapter — implements IWorkflowRunner by invoking the LangGraph pipeline.
- * Loads the per-user TradingStrategy from the store using contextId (ENS name),
- * then injects it as initial state before running the workflow.
+ * Accepts a workflowFactory so each A2A invocation gets per-user position/audit stores,
+ * matching the behaviour of the daily scheduler.
  */
 export class WorkflowRunner implements IWorkflowRunner {
   constructor(
-    private readonly workflow: InvokableWorkflow,
+    private readonly workflowFactory: WorkflowFactory,
     private readonly strategyStore: IStrategyStore,
   ) {}
 
@@ -30,7 +32,6 @@ export class WorkflowRunner implements IWorkflowRunner {
     if (contextId) {
       strategy = await this.strategyStore.loadStrategy(contextId);
       if (!strategy) {
-        // Fall back to first available profile (useful for testing with a single user)
         const all = await this.strategyStore.listAll();
         strategy = all[0] ?? null;
         if (strategy) {
@@ -51,7 +52,10 @@ export class WorkflowRunner implements IWorkflowRunner {
       };
     }
 
-    const result = await this.workflow.invoke(
+    // Build a fresh per-user workflow (with correct position/audit stores)
+    const workflow = this.workflowFactory(strategy);
+
+    const result = await workflow.invoke(
       { messages: [new HumanMessage(query)], strategy },
       { configurable: { thread_id: contextId ?? strategy.ensName } },
     );

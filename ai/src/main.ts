@@ -11,21 +11,16 @@ app.listen(port, () => {
   console.log(`[a2a] poll task:    GET  http://localhost:${port}/tasks/:id`);
 });
 
-// Run the daily analysis-investment cycle immediately on startup, then every 24h.
-// Each registered ENS user is processed independently with their own strategy.
+// Schedule the daily cycle — runs on interval only, NOT on startup.
+// Trigger manually via A2A or wait for the first interval.
 const CYCLE_INTERVAL_MS = parseInt(process.env.CYCLE_INTERVAL_MS ?? String(24 * 60 * 60 * 1000));
 
-(async () => {
-  await runDailyCycle();
+console.log(`[scheduler] daily cycle scheduled every ${Math.round(CYCLE_INTERVAL_MS / 60_000)} min (first run at T+${Math.round(CYCLE_INTERVAL_MS / 60_000)} min)`);
 
-  setInterval(async () => {
-    try {
-      await runDailyCycle();
-    } catch (err) {
-      console.error("[scheduler] daily cycle error:", err);
-    }
-  }, CYCLE_INTERVAL_MS);
-})().catch((err) => {
-  console.error("[scheduler] startup error:", err);
-  process.exit(1);
-});
+setInterval(async () => {
+  try {
+    await runDailyCycle();
+  } catch (err) {
+    console.error("[scheduler] daily cycle error:", err);
+  }
+}, CYCLE_INTERVAL_MS);

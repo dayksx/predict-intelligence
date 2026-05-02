@@ -1,19 +1,10 @@
-import Database from "better-sqlite3";
-import { mkdirSync } from "fs";
+import initSqlJs, { type Database } from "sql.js";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { resolve, dirname } from "path";
 
 const DB_FILE = process.env.DB_FILE ?? resolve("data/store.db");
 
-// Ensure data directory exists before opening the database
-mkdirSync(dirname(DB_FILE), { recursive: true });
-
-const db = new Database(DB_FILE);
-
-// WAL mode for concurrent reads alongside writes
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
-
-db.exec(`
+const SCHEMA = `
   CREATE TABLE IF NOT EXISTS market_registry (
     market_id          TEXT PRIMARY KEY,
     title              TEXT NOT NULL,
@@ -54,6 +45,46 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_positions_ens_status ON positions(ens_name, status);
-`);
+`;
 
-export default db;
+let _db: Database | null = null;
+
+/** Loads (or creates) the SQLite database. Call once at startup. */
+export async function openDb(): Promise<Database> {
+  if (_db) return _db;
+
+  const SQL = await initSqlJs();
+  mkdirSync(dirname(DB_FILE), { recursive: true });
+
+  if (existsSync(DB_FILE)) {
+    const data = readFileSync(DB_FILE);
+    _db = new SQL.Database(data);
+  } else {
+    _db = new SQL.Database();
+  }
+
+  _db.run(SCHEMA);
+
+  // Migration: add agent_id column if it doesn't exist yet (safe to run multiple times)
+  try {
+    _db.run("ALTER TABLE profiles ADD COLUMN agent_id TEXT");
+  } catch {
+    // Column already exists — ignore
+  }
+
+  persist(_db);
+
+  return _db;
+}
+
+/** Returns the already-opened database (throws if openDb was not awaited first). */
+export function getDb(): Database {
+  if (!_db) throw new Error("Database not initialised — await openDb() first");
+  return _db;
+}
+
+/** Writes the in-memory database back to disk. */
+export function persist(db: Database): void {
+  const data = db.export();
+  writeFileSync(DB_FILE, Buffer.from(data));
+}

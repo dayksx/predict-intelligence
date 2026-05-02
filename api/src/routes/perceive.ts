@@ -1,5 +1,5 @@
 import { Router } from "express";
-import db from "../db.js";
+import { getDb } from "../db.js";
 
 const router = Router();
 
@@ -26,11 +26,11 @@ const GRAPHITI_URL = process.env.GRAPHITI_URL ?? "http://localhost:8000";
  *                     $ref: '#/components/schemas/MonitoredSource'
  */
 router.get("/", (_req, res) => {
-  const latest = db
-    .prepare("SELECT MAX(updated_at) as ts FROM market_registry")
-    .get() as { ts: string | null };
+  const latest = getDb()
+    .exec("SELECT MAX(updated_at) as ts FROM market_registry")[0]
+    ?.values[0]?.[0] as string | undefined;
 
-  const lastFetchAt = latest?.ts ?? new Date().toISOString();
+  const lastFetchAt = latest ?? new Date().toISOString();
 
   res.json({
     sources: [
