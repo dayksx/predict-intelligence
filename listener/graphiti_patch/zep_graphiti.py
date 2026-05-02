@@ -93,7 +93,7 @@ async def get_graphiti(settings: ZepEnvDep):
     if hasattr(client, 'driver'):
         _original = client.driver.execute_query
         async def _patched(query, **kwargs):
-            kwargs.setdefault('database_', neo4j_database)
+            kwargs['database_'] = neo4j_database  # force override DEFAULT_DATABASE='neo4j'
             return await _original(query, **kwargs)
         client.driver.execute_query = _patched
 
@@ -122,7 +122,7 @@ async def initialize_graphiti(settings: ZepEnvDep):
     if hasattr(client, 'driver'):
         _original = client.driver.execute_query
         async def _patched(query, **kwargs):
-            kwargs.setdefault('database_', neo4j_database)
+            kwargs['database_'] = neo4j_database  # force override DEFAULT_DATABASE='neo4j'
             return await _original(query, **kwargs)
         client.driver.execute_query = _patched
         logger.info(f'[graphiti] patched execute_query → database={neo4j_database}')
