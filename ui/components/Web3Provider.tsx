@@ -6,6 +6,7 @@ import { sepolia } from "wagmi/chains";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConnectKitProvider, getDefaultConfig } from "connectkit";
 import { useTheme } from "@/components/ThemeProvider";
+import { useHasMounted } from "@/lib/useHasMounted";
 
 const config = createConfig(
     getDefaultConfig({
@@ -33,8 +34,9 @@ type Web3ProviderProps = { children: ReactNode };
 
 function ConnectKitWithAppTheme({ children }: Web3ProviderProps) {
     const { theme } = useTheme();
+    const mounted = useHasMounted();
     return (
-        <ConnectKitProvider mode={theme}>
+        <ConnectKitProvider mode={mounted ? theme : "light"}>
             {children}
         </ConnectKitProvider>
     );

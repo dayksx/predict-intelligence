@@ -1,10 +1,21 @@
 "use client";
 
 import { useTheme } from "@/components/ThemeProvider";
+import { useHasMounted } from "@/lib/useHasMounted";
 
 export function ThemeToggle() {
+  const mounted = useHasMounted();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === "dark";
+
+  if (!mounted) {
+    return (
+      <div
+        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+        aria-hidden
+      />
+    );
+  }
 
   return (
     <button

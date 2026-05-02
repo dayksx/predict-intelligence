@@ -159,16 +159,24 @@ function HelperText({
   children,
   id,
   className = "",
+  discrete = false,
+  quiet = false,
 }: {
   children: React.ReactNode;
   id?: string;
   className?: string;
+  /** Smaller, lower-contrast copy for section intros */
+  discrete?: boolean;
+  /** Fine print — subtler than `discrete` for hints beside controls */
+  quiet?: boolean;
 }) {
+  const tone = quiet
+    ? "text-[9px] font-normal leading-snug text-slate-400/85 dark:text-slate-500 sm:text-[10px]"
+    : discrete
+      ? "text-[10px] font-normal leading-snug text-slate-500/75 dark:text-slate-500 sm:text-[11px]"
+      : "text-xs leading-relaxed text-slate-600 dark:text-slate-400";
   return (
-    <p
-      id={id}
-      className={`text-xs leading-relaxed text-slate-600 dark:text-slate-400 ${className}`}
-    >
+    <p id={id} className={`${tone} ${className}`}>
       {children}
     </p>
   );
@@ -176,6 +184,34 @@ function HelperText({
 
 const formCardClass =
   "rounded-lg border border-sky-100/55 bg-gradient-to-br from-sky-50/45 via-white to-white p-5 dark:border-sky-950/30 dark:from-sky-950/12 dark:via-slate-950 dark:to-slate-950 sm:p-6";
+
+const ORANGE_CAPABILITY_PILL_CLASS =
+  "border-orange-200/80 bg-orange-50 text-orange-950 dark:border-orange-800 dark:bg-orange-950/50 dark:text-orange-200";
+
+/** GitHub-style label tints (aligned with dashboard `statusPresentation` pills) */
+const CAPABILITY_PILL_CLASSES = [
+  "border-emerald-200/80 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/55 dark:text-emerald-200",
+  "border-sky-200/80 bg-sky-50 text-sky-950 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-200",
+  "border-violet-200/80 bg-violet-50 text-violet-950 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-200",
+  "border-amber-200/80 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200",
+  "border-rose-200/80 bg-rose-50 text-rose-950 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-200",
+  "border-cyan-200/80 bg-cyan-50 text-cyan-950 dark:border-cyan-800 dark:bg-cyan-950/50 dark:text-cyan-200",
+  "border-fuchsia-200/80 bg-fuchsia-50 text-fuchsia-950 dark:border-fuchsia-800 dark:bg-fuchsia-950/50 dark:text-fuchsia-200",
+  ORANGE_CAPABILITY_PILL_CLASS,
+] as const;
+
+function capabilityPillClass(cap: string, index: number): string {
+  if (cap.trim().toLowerCase() === "sport predictive market") {
+    return ORANGE_CAPABILITY_PILL_CLASS;
+  }
+  return CAPABILITY_PILL_CLASSES[index % CAPABILITY_PILL_CLASSES.length];
+}
+
+function interestTopicPillClass(value: InterestTopicValue): string {
+  const idx = INTEREST_TOPICS.findIndex((t) => t.value === value);
+  const i = idx === -1 ? 0 : idx;
+  return CAPABILITY_PILL_CLASSES[i % CAPABILITY_PILL_CLASSES.length];
+}
 
 function FormStepCard({
   id,
@@ -202,7 +238,6 @@ const REGISTRATION_SECTION_LABELS = {
   agent: "Choose your agent's profile",
   delegate: "Amount to delegate",
   focus: "Define your agent's prompt",
-  registerNav: "Register",
 } as const;
 
 const REGISTRATION_STEPS = [
@@ -210,7 +245,6 @@ const REGISTRATION_STEPS = [
   { id: "step-agent", label: REGISTRATION_SECTION_LABELS.agent },
   { id: "step-delegate", label: REGISTRATION_SECTION_LABELS.delegate },
   { id: "step-focus", label: REGISTRATION_SECTION_LABELS.focus },
-  { id: "step-register", label: REGISTRATION_SECTION_LABELS.registerNav },
 ] as const;
 
 type RegistrationStepId = (typeof REGISTRATION_STEPS)[number]["id"];
@@ -630,9 +664,9 @@ export function AgentRegistrationForm() {
                 {REGISTRATION_SECTION_LABELS.claim}
               </legend>
               <SectionTitle>{REGISTRATION_SECTION_LABELS.claim}</SectionTitle>
-              <HelperText>
+              <HelperText discrete>
                 This is your public handle under{" "}
-                <span className="font-mono font-semibold text-sky-800/90 dark:text-sky-300/90">
+                <span className="font-mono font-medium text-sky-700/70 dark:text-sky-400/75">
                   .agentic.eth
                 </span>
                 — make it yours before someone else does.
@@ -699,7 +733,7 @@ export function AgentRegistrationForm() {
                 {REGISTRATION_SECTION_LABELS.agent}
               </legend>
               <SectionTitle>{REGISTRATION_SECTION_LABELS.agent}</SectionTitle>
-              <HelperText className="max-w-2xl">
+              <HelperText discrete className="max-w-2xl">
                 Pick the operator that fits how you think—fee shown in ETH. Your
                 choice ships with the metadata step, not the name claim.
               </HelperText>
@@ -756,10 +790,10 @@ export function AgentRegistrationForm() {
                           Capabilities
                         </p>
                         <ul className="mt-2.5 flex flex-wrap gap-1.5">
-                          {agent.capabilities.slice(0, 3).map((cap) => (
+                          {agent.capabilities.slice(0, 3).map((cap, i) => (
                             <li
                               key={cap}
-                              className="rounded-md border border-sky-100/75 bg-sky-50/40 px-2 py-1 text-[11px] leading-tight font-medium text-slate-700 dark:border-sky-900/35 dark:bg-sky-950/20 dark:text-slate-300"
+                              className={`rounded-md border px-2 py-1 text-[11px] leading-tight font-medium ${capabilityPillClass(cap, i)}`}
                             >
                               {cap}
                             </li>
@@ -789,9 +823,9 @@ export function AgentRegistrationForm() {
                   {REGISTRATION_SECTION_LABELS.focus}
                 </legend>
 
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <SectionTitle>{REGISTRATION_SECTION_LABELS.focus}</SectionTitle>
-                  <HelperText>
+                  <HelperText discrete>
                     Spell out your edge—topics you care about, the bet you are
                     making, and what would flip you. This is your signal on-chain.
                   </HelperText>
@@ -800,7 +834,7 @@ export function AgentRegistrationForm() {
                 <div className="space-y-6">
                   <div>
                     <FieldLabel>Your focus areas</FieldLabel>
-                    <HelperText id="areas-interest-hint" className="mb-3">
+                    <HelperText id="areas-interest-hint" className="mb-3" quiet>
                       Stack tags for the arenas you actually watch—not a résumé, a
                       radar.
                     </HelperText>
@@ -844,11 +878,13 @@ export function AgentRegistrationForm() {
                       value;
                     return (
                       <li key={value}>
-                        <span className="inline-flex max-w-full items-center gap-0.5 rounded-md border border-sky-100/75 bg-sky-50/55 py-0.5 pr-0.5 pl-2 text-[11px] font-medium text-slate-800 dark:border-sky-900/35 dark:bg-sky-950/25 dark:text-slate-200">
+                        <span
+                          className={`inline-flex max-w-full items-center gap-0.5 rounded-md border py-0.5 pr-0.5 pl-2 text-[11px] font-medium ${interestTopicPillClass(value)}`}
+                        >
                           <span className="truncate">{topicLabel}</span>
                           <button
                             type="button"
-                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 transition hover:bg-slate-200 hover:text-slate-900 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-current/70 transition hover:bg-black/10 hover:text-current dark:hover:bg-white/15"
                             aria-label={`Remove ${topicLabel}`}
                             onClick={() =>
                               setSelectedInterests((prev) =>
@@ -873,7 +909,7 @@ export function AgentRegistrationForm() {
 
                   <div>
                     <FieldLabel htmlFor="thesis-prompt">Your thesis</FieldLabel>
-                    <HelperText id="thesis-prompt-hint" className="mb-3">
+                    <HelperText id="thesis-prompt-hint" className="mb-3" quiet>
                       Conviction in plain language: what you believe, what you are
                       tracking, and what would prove you wrong.
                     </HelperText>
@@ -901,7 +937,7 @@ export function AgentRegistrationForm() {
               <SectionTitle as="h3">
                 {REGISTRATION_SECTION_LABELS.delegate}
               </SectionTitle>
-              <HelperText id="delegation-eth-hint">
+              <HelperText id="delegation-eth-hint" discrete>
                 Say how much ETH you intend to put behind this agent—stored as
                 intent on your profile (no transfer happens in this flow).
               </HelperText>
@@ -966,11 +1002,13 @@ export function AgentRegistrationForm() {
                 <p className="break-all">{registrar}</p>
                 <p>
                   Parent expiry ·{" "}
-                  {parentExpiry !== undefined
-                    ? parentExpiry.toString()
-                    : expiryError
-                      ? "unavailable"
-                      : "loading…"}
+                  {!hasMounted
+                    ? "loading…"
+                    : parentExpiry !== undefined
+                      ? parentExpiry.toString()
+                      : expiryError
+                        ? "unavailable"
+                        : "loading…"}
                 </p>
                 <div className="font-sans text-[11px]">
                   <p className="mb-1.5 font-medium text-slate-600 dark:text-slate-400">
@@ -995,8 +1033,11 @@ export function AgentRegistrationForm() {
                   <span className="font-medium text-slate-800 dark:text-slate-200">
                     Perceive · Reason · Act
                   </span>
-                  — two Sepolia transactions: claim your handle, then publish your
-                  public metadata. Connect your wallet and sign below.
+                  {" — "}
+                  Connect your wallet, then use Register below. You&apos;ll confirm
+                  two short steps on the Sepolia test network: claim your handle,
+                  then publish your public profile. Approve each prompt in your
+                  wallet when it appears.
                 </p>
                 <button
                   type="submit"
