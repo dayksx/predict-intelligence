@@ -92,9 +92,9 @@ async def get_graphiti(settings: ZepEnvDep):
     neo4j_database = os.environ.get('NEO4J_DATABASE', 'neo4j')
     if hasattr(client, 'driver'):
         _original = client.driver.execute_query
-        async def _patched(query, **kwargs):
+        async def _patched(cypher_query_, **kwargs):
             kwargs['database_'] = neo4j_database  # force override DEFAULT_DATABASE='neo4j'
-            return await _original(query, **kwargs)
+            return await _original(cypher_query_, **kwargs)
         client.driver.execute_query = _patched
 
     if settings.openai_base_url is not None:
@@ -121,9 +121,9 @@ async def initialize_graphiti(settings: ZepEnvDep):
     # graphiti_core defaults to 'neo4j' but Aura Free uses the instance ID as the db name.
     if hasattr(client, 'driver'):
         _original = client.driver.execute_query
-        async def _patched(query, **kwargs):
+        async def _patched(cypher_query_, **kwargs):
             kwargs['database_'] = neo4j_database  # force override DEFAULT_DATABASE='neo4j'
-            return await _original(query, **kwargs)
+            return await _original(cypher_query_, **kwargs)
         client.driver.execute_query = _patched
         logger.info(f'[graphiti] patched execute_query → database={neo4j_database}')
     await client.build_indices_and_constraints()
