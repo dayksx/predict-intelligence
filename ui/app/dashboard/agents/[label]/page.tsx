@@ -12,6 +12,10 @@ import {
 } from "@/lib/agent-activities";
 import { isApiConfigured } from "@/lib/api-client";
 import { usePercieve, useReason, useAct, useProfile } from "@/hooks/useAgentFeed";
+import {
+  AgentDelegationMetricsStrip,
+  AgentDelegationOutcomeDiagramPanel,
+} from "@/components/agent/AgentDelegationYieldHero";
 import { AgentLiveSidebar } from "@/components/agent/AgentLiveSidebar";
 import { useEnsAvatar, useEnsText } from "wagmi";
 import { sepolia } from "wagmi/chains";
@@ -72,6 +76,35 @@ export default function AgentActivitiesPage() {
   const percieveSources = perceiveQ.data ?? (apiConfigured ? [] : mockFeed?.perceive.sources ?? []);
   const reasonRuns      = reasonQ.data   ?? (apiConfigured ? [] : mockFeed?.reason.runs ?? []);
   const actActions      = actQ.data      ?? (apiConfigured ? [] : mockFeed?.triggered.actions ?? []);
+  const { data: avatar } = useEnsAvatar({
+    name: fullName,
+    chainId,
+    query: { enabled },
+  });
+  const { data: agentNameRecord } = useEnsText({
+    name: fullName,
+    key: AGENTIC_ENS_TEXT_KEYS.agentName,
+    chainId,
+    query: { enabled },
+  });
+  const { data: focusDomain } = useEnsText({
+    name: fullName,
+    key: AGENTIC_ENS_TEXT_KEYS.focusDomain,
+    chainId,
+    query: { enabled },
+  });
+  const { data: thesisPrompt } = useEnsText({
+    name: fullName,
+    key: AGENTIC_ENS_TEXT_KEYS.thesisPrompt,
+    chainId,
+    query: { enabled },
+  });
+  const { data: delegatedAmountEns } = useEnsText({
+    name: fullName,
+    key: AGENTIC_ENS_TEXT_KEYS.delegatedAmount,
+    chainId,
+    query: { enabled },
+  });
 
   const { data: avatar } = useEnsAvatar({ name: fullName, chainId, query: { enabled } });
   const { data: agentNameRecord } = useEnsText({ name: fullName, key: AGENTIC_ENS_TEXT_KEYS.agentName, chainId, query: { enabled } });
@@ -122,13 +155,13 @@ export default function AgentActivitiesPage() {
 
   return (
     <div className="flex min-h-full flex-1 flex-col bg-zinc-50 font-sans dark:bg-black">
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6">
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-5 sm:px-6 sm:py-5">
         <div>
           <Link href="/dashboard" className="text-sm font-medium text-sky-600 hover:underline dark:text-sky-400">
             ← Dashboard
           </Link>
 
-          <div className="mt-6 flex flex-wrap items-start gap-4">
+          <div className="mt-4 flex flex-wrap items-start gap-4">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-sky-200 bg-zinc-100 ring-2 ring-sky-500/15 dark:border-sky-800 dark:bg-zinc-800 dark:ring-sky-400/10">
               {avatar ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -141,7 +174,7 @@ export default function AgentActivitiesPage() {
             </div>
             <div className="min-w-0 flex-1">
               <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
-                Agent activities
+                Your agent
               </h1>
               <p className="mt-1 font-mono text-sm text-sky-700 dark:text-sky-300">
                 {fullName}
@@ -158,16 +191,24 @@ export default function AgentActivitiesPage() {
                 </span>
               </div>
               <p className="mt-3 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
-                Inputs, decisions grounded in your ENS prompt and focus, and
-                downstream triggers — each section below uses the same color cue.
+                Summary metrics and venue chart share the top band; the outcome
+                diagram sits in a narrow column beside chat, then activity feeds.
               </p>
             </div>
           </div>
 
           {profileBanner}
+
         </div>
 
-        <AgentLiveSidebar key={label} label={label} />
+        <AgentDelegationMetricsStrip ensDelegatedAmount={delegatedAmountEns} />
+
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch lg:gap-5">
+    
+          <div className="min-w-0 flex-1">
+            <AgentLiveSidebar key={label} label={label} />
+          </div>
+        </div>
 
         <div className="space-y-6">
           {/* Perceive */}
