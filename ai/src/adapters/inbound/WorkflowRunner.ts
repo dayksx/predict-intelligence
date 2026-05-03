@@ -63,7 +63,8 @@ export class WorkflowRunner implements IWorkflowRunner {
 
     const result = await workflow.invoke(
       { messages: [new HumanMessage(query)], strategy: effectiveStrategy },
-      { configurable: { thread_id: contextId ?? strategy.ensName } },
+      // Use mode-scoped thread_id so LangSmith keeps alpha and chat traces separate
+      { configurable: { thread_id: `${contextId ?? strategy.ensName}:${isAlphaSignal ? "alpha" : "chat"}` } },
     );
 
     return {

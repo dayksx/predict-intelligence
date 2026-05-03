@@ -386,6 +386,18 @@ export class UniswapSwapExecutor implements ISwapExecutor {
     permitData: unknown,
     signature?: string,
   ): Promise<Record<string, unknown>> {
+    const swapBody: Record<string, unknown> = {
+      quote,
+      simulateTransaction: true,
+      safetyMode: "SAFE",
+      urgency: "normal",
+    };
+    // Only include permitData + signature when the quote actually returned permit data.
+    // For native ETH swaps no permit is needed — sending an empty/null object causes 400.
+    if (permitData != null) {
+      swapBody.permitData = permitData;
+      swapBody.signature = signature;
+    }
     const res = await fetch(`${this.apiBase}/swap`, {
       method: "POST",
       headers: {
@@ -393,14 +405,7 @@ export class UniswapSwapExecutor implements ISwapExecutor {
         "x-api-key": this.apiKey,
         "x-universal-router-version": "2.0",
       },
-      body: JSON.stringify({
-        quote,
-        permitData: permitData ?? {},  // must be {} (not null/absent) when ETH is tokenIn — Uniswap /swap rejects null
-        signature,
-        simulateTransaction: true,
-        safetyMode: "SAFE",
-        urgency: "normal",
-      }),
+      body: JSON.stringify(swapBody),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
