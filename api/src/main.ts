@@ -14,11 +14,21 @@ const app = express();
 const port = parseInt(process.env.PORT ?? "4338");
 
 const rawOrigins = process.env.CORS_ORIGINS ?? "http://localhost:3000";
-// When CORS_ORIGINS=*, reflect the request origin back (wildcard + credentials is disallowed by spec)
-const corsOrigin: cors.CorsOptions["origin"] = rawOrigins === "*"
-  ? true
-  : rawOrigins.split(",").map(s => s.trim());
+// origin:true reflects the request origin back — satisfies both credentials + CORS spec.
+// "*" wildcard with credentials is disallowed by the spec so we always reflect.
+const corsOrigin: cors.CorsOptions["origin"] =
+  rawOrigins === "*" || rawOrigins === "true"
+    ? true
+    : rawOrigins.split(",").map(s => s.trim());
 app.use(cors({ origin: corsOrigin, credentials: true }));
+// Belt-and-suspenders: ensure CORS headers are present on every response
+app.use((_req, res, next) => {
+  if (!res.getHeader("access-control-allow-origin")) {
+    res.setHeader("access-control-allow-origin", _req.headers.origin ?? "*");
+  }
+  res.setHeader("access-control-allow-credentials", "true");
+  next();
+});
 app.use(express.json({ limit: "5mb" }));
 
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
