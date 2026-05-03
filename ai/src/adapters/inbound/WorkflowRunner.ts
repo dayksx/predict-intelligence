@@ -55,8 +55,14 @@ export class WorkflowRunner implements IWorkflowRunner {
     // Build a fresh per-user workflow (with correct position/audit stores)
     const workflow = this.workflowFactory(strategy);
 
+    // Alpha signals from the dashboard are explicit user instructions — relax confidence filter
+    const isAlphaSignal = query.startsWith("[Alpha signal from user]");
+    const effectiveStrategy = isAlphaSignal
+      ? { ...strategy, confidence_threshold: 0.3 }
+      : strategy;
+
     const result = await workflow.invoke(
-      { messages: [new HumanMessage(query)], strategy },
+      { messages: [new HumanMessage(query)], strategy: effectiveStrategy },
       { configurable: { thread_id: contextId ?? strategy.ensName } },
     );
 
