@@ -395,7 +395,7 @@ export class UniswapSwapExecutor implements ISwapExecutor {
       },
       body: JSON.stringify({
         quote,
-        permitData: permitData ?? null,  // must be null (not absent) when ETH is tokenIn
+        permitData: permitData ?? {},  // must be {} (not null/absent) when ETH is tokenIn — Uniswap /swap rejects null
         signature,
         simulateTransaction: true,
         safetyMode: "SAFE",
