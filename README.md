@@ -71,8 +71,8 @@ Autonomous prediction market trading agents powered by ENS identity, Graphiti kn
 │    │ audit log│    │ close   │    │ (skip in dry_run)      │            │
 │    └──────────┘    └─────────┘    └────────────────────────┘            │
 │         │               │                                                │
-│         │               └─▶ StubTradeExecutor / StubSwapExecutor        │
-│         │                   (live executor wired here when ready)        │
+│         │               └─▶ UniswapSwapExecutor (Sepolia, live swap)          │
+│         │                   PolymarketTradeExecutor (dry-run for Polymarket)   │
 │         ▼                                                                │
 │    data/positions/alice.agentic.eth.json                                 │
 │    data/audit/alice.agentic.eth.jsonl                                    │
@@ -104,31 +104,88 @@ Autonomous prediction market trading agents powered by ENS identity, Graphiti kn
 ## Running Locally
 
 ### Prerequisites
-- Docker (for Graphiti + Neo4j)
+- Docker (for Neo4j + Graphiti)
 - Node.js 20+
-- A Sepolia RPC URL (Alchemy / Infura)
+- OpenAI API key (or compatible LiteLLM endpoint)
+- Sepolia RPC URL (Alchemy / Infura)
 
-### Start infrastructure
+### 1. Start infrastructure (Neo4j + Graphiti)
 
 ```bash
 cd listener
 npm run infra:up
 ```
 
-### Start listener
+This starts two Docker containers:
+- **Neo4j** on `bolt://localhost:7687` (browser at http://localhost:7474, login: `neo4j` / `password`)
+- **Graphiti** on http://localhost:8000
+
+### 2. Start the listener
 
 ```bash
 cd listener
-cp .env.example .env   # fill in LITELLM_API_KEY, SEPOLIA_RPC_URL, etc.
+cp .env.example .env   # fill in OPENAI_API_KEY, SEPOLIA_RPC_URL
 npm run dev
 ```
 
-### Start AI agent
+Key env vars:
+- `OPENAI_API_KEY` — used by Graphiti for LLM extraction and embeddings
+- `SEPOLIA_RPC_URL` — Alchemy/Infura Sepolia endpoint for ENS text record reads
+- `GRAPHITI_URL=http://localhost:8000` — already set in `.env.example`
+
+The listener polls ENS for new user registrations every 1 min and ingests Polymarket data every 24h. To trigger a manual ingest immediately:
+```bash
+curl -X POST http://localhost:3001/ingest/now
+```
+
+### 3. Start the API
+
+```bash
+cd api
+cp .env.example .env   # fill in GRAPHITI_URL
+npm run dev
+```
+
+Runs on http://localhost:3001. Serves agent activity, positions, and user profiles to the UI.
+
+### 4. Start the AI agent
 
 ```bash
 cd ai
-cp .env.example .env   # fill in LITELLM_API_KEY
+cp .env.example .env   # fill in OPENAI_API_KEY, PRIVATE_KEY, UNISWAP_API_KEY
 npm run dev
 ```
 
-The AI agent runs the daily cycle immediately on startup and then every 24h, processing every user profile found in `data/profiles/`.
+Key env vars:
+- `OPENAI_API_KEY` — LLM for trading decisions
+- `PRIVATE_KEY` — Sepolia wallet private key (for Uniswap swaps)
+- `UNISWAP_API_KEY` — from https://hub.uniswap.org
+- `GRAPHITI_URL=http://localhost:8000`
+- `API_URL=http://localhost:3001`
+
+The AI agent does **not** run automatically on startup. It is triggered via the A2A endpoint:
+```bash
+# Trigger a run for a specific user
+curl -X POST http://localhost:4337/message:send \
+  -H "Content-Type: application/json" \
+  -d '{"message":{"role":"user","parts":[{"text":"run for alice.agentic.eth"}]}}'
+```
+
+### 5. Start the UI
+
+```bash
+cd ui
+cp .env.example .env.local   # fill in NEXT_PUBLIC_* vars
+npm run dev
+```
+
+Runs on http://localhost:3000. Key env vars:
+- `NEXT_PUBLIC_API_URL=http://localhost:3001`
+- `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` — from https://cloud.walletconnect.com
+- `NEXT_PUBLIC_REGISTRAR_CONTRACT_ADDRESS` — optional, defaults to the repo's deployed Sepolia contract
+
+### Quick start order
+
+```
+infra:up → listener → api → ai → ui
+```
