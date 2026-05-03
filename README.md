@@ -87,11 +87,24 @@ Autonomous prediction market trading agents powered by ENS identity, Graphiti kn
 
 | Module | Description |
 |---|---|
-| `ui/` | Next.js registration UI — ENS subdomain claim + metadata publish |
+| `ui/` | Next.js app — ENS subdomain registration, wallet dashboard, per-agent delegation analytics (venue P&L, waterfall diagram), and activity views — see [`ui/README.md`](ui/README.md) |
 | `sc/` | Solidity contracts — ENS subdomain registrar on Sepolia |
 | `listener/` | Data ingestion — Polymarket markets + ENS user registration watcher |
 | `ai/` | Autonomous trading agent — LangGraph pipeline + A2A server |
 | `api/` | API gateway (if applicable) |
+
+### UI highlights
+
+The [`ui/`](ui/) app complements on-chain registration with:
+
+- **Home (`/`)** — `AgentRegistrationForm`: claim `*.agentic.eth` on Sepolia and publish ENS text records (focus domain, thesis, agent name, delegated amount, avatar, etc.).
+- **Dashboard (`/dashboard`)** — Lists the connected wallet’s agentic subdomains (via client-side resolution), profile-style header from ENS, and links into each agent.
+- **Agent detail (`/dashboard/agents/[label]`)** — Reads ENS records for that agent and shows:
+  - A **delegation metrics strip**: delegated ETH (from ENS), a **venue P&L chart** (Swap / Perps / Predict gains vs losses), wins/losses split, net trading P&L, and book value.
+  - A **narrow-column outcome waterfall** (delegation → gains → losses → book line) beside a **live sidebar** (chat).
+  - **Activity sections** (Perceive / Reason / Triggered) fed from local demo data until wired to your indexer.
+
+Yield numbers are driven by [`ui/lib/delegation-yield-snapshot.ts`](ui/lib/delegation-yield-snapshot.ts). Until an indexer supplies realized wins/losses, the UI can show **mock** trading outcomes using `NEXT_PUBLIC_MOCK_AGENT_YIELD` (documented in [`ui/README.md`](ui/README.md)).
 
 ## Data Flow Summary
 
