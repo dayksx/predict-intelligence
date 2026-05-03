@@ -151,10 +151,22 @@ export class UniswapSwapExecutor implements ISwapExecutor {
       // Check mainnet reference price via DexScreener before committing
       await this.logDexScreenerPrice(params.tokenOut);
 
-      // Pre-flight balance check for ERC-20 tokenIn — surfaces "no balance" clearly
-      // instead of letting Uniswap return the misleading FAILED_TO_ESTIMATE_GAS error.
+      // Pre-flight balance check — native ETH and ERC-20 both guarded
       const isNative = tokenIn.address === "0x0000000000000000000000000000000000000000";
-      if (!isNative) {
+      if (isNative) {
+        const ethBalance = await publicClient.getBalance({ address: account.address });
+        const gasReserve = parseUnits("0.01", 18);
+        const maxSwappable = ethBalance > gasReserve ? ethBalance - gasReserve : 0n;
+        const needed = BigInt(amountRaw);
+        if (maxSwappable === 0n || needed > maxSwappable) {
+          const have = formatUnits(ethBalance, 18);
+          const need = formatUnits(needed, 18);
+          const msg = `Insufficient ETH: have ${have}, need ${need} + 0.01 gas reserve. Fund wallet or reduce swap size.`;
+          console.error(`[uniswap][live] ${msg}`);
+          return { success: false, error: msg };
+        }
+        console.log(`[uniswap][live] ETH balance OK: ${formatUnits(ethBalance, 18)} ETH`);
+      } else {
         const balanceResult = await publicClient.readContract({
           address: tokenIn.address,
           abi: [{ name: "balanceOf", type: "function", stateMutability: "view",
@@ -168,10 +180,9 @@ export class UniswapSwapExecutor implements ISwapExecutor {
         if (balance < needed) {
           const haveHuman = formatUnits(balance, tokenIn.decimals);
           const needHuman = formatUnits(needed, tokenIn.decimals);
-          return {
-            success: false,
-            error: `Insufficient ${params.tokenIn} balance on Sepolia: have ${haveHuman}, need ${needHuman}. Get testnet tokens from faucet.circle.com (USDC) or sepoliafaucet.com (ETH).`,
-          };
+          const msg = `Insufficient ${params.tokenIn} balance on Sepolia: have ${haveHuman}, need ${needHuman}. Get testnet tokens from faucet.circle.com (USDC) or sepoliafaucet.com (ETH).`;
+          console.error(`[uniswap][live] ${msg}`);
+          return { success: false, error: msg };
         }
         console.log(`[uniswap][live] balance OK: ${formatUnits(balance, tokenIn.decimals)} ${params.tokenIn}`);
       }
@@ -384,7 +395,7 @@ export class UniswapSwapExecutor implements ISwapExecutor {
       },
       body: JSON.stringify({
         quote,
-        permitData,
+        permitData: permitData ?? null,  // must be null (not absent) when ETH is tokenIn
         signature,
         simulateTransaction: true,
         safetyMode: "SAFE",

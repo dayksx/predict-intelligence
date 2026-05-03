@@ -64,10 +64,19 @@ export function makeActNode(
             },
           );
         } else if (decision.action === "swap") {
+          const rawUsdAmount = decision.sizeUsdc ?? strategy.max_position_usdc;
+          const tokenIn = (decision.tokenIn ?? "USDC").toUpperCase();
+          // sizeUsdc is always a USD value — convert to token units for native ETH/WETH
+          // (USDC is 1:1, ETH needs price conversion; use 2500 as conservative estimate)
+          const ETH_USD_ESTIMATE = 2500;
+          const amountIn =
+            tokenIn === "ETH" || tokenIn === "WETH"
+              ? Math.min(rawUsdAmount / ETH_USD_ESTIMATE, 0.05) // cap at 0.05 ETH per swap
+              : rawUsdAmount;
           const swapResult = await swapExecutor.executeSwap({
             tokenIn: decision.tokenIn ?? "USDC",
             tokenOut: decision.tokenOut ?? "WETH",
-            amountIn: decision.sizeUsdc ?? strategy.max_position_usdc,
+            amountIn,
             dryRun: strategy.dry_run,
           });
           result = { ...swapResult, dryRun: strategy.dry_run };
