@@ -13,8 +13,12 @@ import ingestRouter from "./routes/ingest.js";
 const app = express();
 const port = parseInt(process.env.PORT ?? "4338");
 
-const allowedOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:3000").split(",");
-app.use(cors({ origin: allowedOrigins, credentials: true }));
+const rawOrigins = process.env.CORS_ORIGINS ?? "http://localhost:3000";
+// When CORS_ORIGINS=*, reflect the request origin back (wildcard + credentials is disallowed by spec)
+const corsOrigin: cors.CorsOptions["origin"] = rawOrigins === "*"
+  ? true
+  : rawOrigins.split(",").map(s => s.trim());
+app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json({ limit: "5mb" }));
 
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
