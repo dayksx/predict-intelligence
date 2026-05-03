@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 55; // Vercel hobby max is 60s; keep buffer
 
 type Body = {
   mode?: "chat" | "alpha";
@@ -17,7 +18,7 @@ async function pollA2ATask(
   taskId: string,
   headers: HeadersInit,
 ): Promise<{ reply: string; rawState?: string }> {
-  const deadline = Date.now() + 120_000;
+  const deadline = Date.now() + 50_000;
   while (Date.now() < deadline) {
     const res = await fetch(`${baseUrl.replace(/\/$/, "")}/tasks/${taskId}`, {
       headers,
