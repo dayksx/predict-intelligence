@@ -8,5 +8,5 @@
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   },
-  "watchPatterns": ["listener/graphiti_patch/**", "Dockerfile.graphiti"]
+  "watchPatterns": ["listener/graphiti_patch/", "Dockerfile.graphiti"]
 }
