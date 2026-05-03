@@ -48,24 +48,28 @@ router.get("/:label", (req, res) => {
 
   const rows = (result[0]?.values ?? []) as Array<[string, string, string]>;
 
-  const actions = rows.map(([run_id, data_json, timestamp], idx) => {
-    const data = JSON.parse(data_json ?? "{}") as {
-      decision?: {
-        action?: string;
-        marketId?: string;
-        direction?: string;
-        sizeUsdc?: number;
-        tokenIn?: string;
-        tokenOut?: string;
-        reasoning?: string;
+  const actions = rows
+    .map(([run_id, data_json, timestamp], idx) => {
+      const data = JSON.parse(data_json ?? "{}") as {
+        decision?: {
+          action?: string;
+          marketId?: string;
+          direction?: string;
+          sizeUsdc?: number;
+          tokenIn?: string;
+          tokenOut?: string;
+          reasoning?: string;
+        };
+        result?: {
+          success?: boolean;
+          dryRun?: boolean;
+          txHash?: string;
+          decisionId?: string;
+        };
       };
-      result?: {
-        success?: boolean;
-        dryRun?: boolean;
-        txHash?: string;
-        decisionId?: string;
-      };
-    };
+
+      // Only show actions that actually succeeded
+      if (data.result?.success !== true) return null;
 
     const decision = data.decision ?? {};
     const result2 = data.result ?? {};
@@ -101,7 +105,7 @@ router.get("/:label", (req, res) => {
     };
   });
 
-  res.json({ actions });
+  res.json({ actions: actions.filter(Boolean) });
 });
 
 export default router;

@@ -45,6 +45,7 @@ router.get("/:label", (req, res) => {
       const data = JSON.parse(data_json ?? "{}") as {
         summary?: string;
         decisions?: Array<{ reasoning?: string; action?: string }>;
+        results?: Array<{ success?: boolean; action?: string; dryRun?: boolean }>;
       };
       const decisions = (data.decisions ?? []).filter(
         (d) => d.action && d.action !== "hold",
@@ -52,6 +53,12 @@ router.get("/:label", (req, res) => {
 
       // Skip runs where no real action was taken
       if (decisions.length === 0) return null;
+
+      // Skip runs where every action failed (execution error, not just dry-run)
+      const results = data.results ?? [];
+      const anySucceeded = results.some((r) => r.success === true);
+      const anyAttempted = results.length > 0;
+      if (anyAttempted && !anySucceeded) return null;
 
       const focusAreas = [
         ...new Set(
