@@ -62,7 +62,7 @@ export const MARKETPLACE_AGENTS: readonly MarketplaceAgent[] = [
     tagline: "Geopolitical prediction markets",
     description:
       "Long and short views on geopolitical outcomes, with access to a dedicated geopolitical prediction market.",
-    accessPriceEth: "0.01",
+    accessPriceEth: "0.001",
     capabilities: [
       "Long / Short markets",
       "Geopolitic Predictive Market",
@@ -74,7 +74,7 @@ export const MARKETPLACE_AGENTS: readonly MarketplaceAgent[] = [
     tagline: "Crypto prediction markets",
     description:
       "Swap-related tooling alongside a crypto-focused predictive market for digital-asset theses.",
-    accessPriceEth: "0.01",
+    accessPriceEth: "0.001",
     capabilities: ["Swap", "Crypto Predictive Market"],
   },
   {
